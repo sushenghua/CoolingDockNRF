@@ -1,0 +1,75 @@
+/* Devicetree overlay for the CoolingDock-equivalent build on the
+ * nRF52832 DK (PCA10040).
+ *
+ * Pin map:
+ *   I2C0 SCL        P0.27   (Arduino A5)  -> SHT3x SCL
+ *   I2C0 SDA        P0.26   (Arduino A4)  -> SHT3x SDA
+ *   PWM0 channel 0  P0.13   (Arduino D2)  -> Fan PWM   (22 kHz)
+ *   GPIO out        P0.14   (Arduino D3)  -> Fan power gate (active-high)
+ */
+
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/* ------------------------------------------------------------------ pinctrl */
+
+&pinctrl {
+	pwm0_default: pwm0_default {
+		group1 {
+			psels = <NRF_PSEL(PWM_OUT0, 0, 13)>;
+		};
+	};
+
+	pwm0_sleep: pwm0_sleep {
+		group1 {
+			psels = <NRF_PSEL(PWM_OUT0, 0, 13)>;
+			low-power-enable;
+		};
+	};
+};
+
+/* --------------------------------------------------------------------- I2C0 */
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+
+	sht3x: sht3xd@44 {
+		compatible = "sensirion,sht3xd";
+		reg = <0x44>;
+	};
+};
+
+/* --------------------------------------------------------------------- PWM0 */
+
+&pwm0 {
+	status = "okay";
+	pinctrl-0 = <&pwm0_default>;
+	pinctrl-1 = <&pwm0_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+/* ---------------------------------------------- application aliases / nodes */
+
+/ {
+	fan_pwms {
+		compatible = "pwm-leds";
+		status = "okay";
+		fan_pwm_ch: fan_pwm_ch {
+			pwms = <&pwm0 0 PWM_HZ(22000) PWM_POLARITY_NORMAL>;
+		};
+	};
+
+	fan_power_gpios {
+		compatible = "gpio-leds";
+		status = "okay";
+		fan_power: fan_power {
+			gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	aliases {
+		fan-pwm   = &fan_pwm_ch;
+		fan-power = &fan_power;
+		sht3x     = &sht3x;
+	};
+};
