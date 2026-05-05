@@ -68,8 +68,12 @@
 	};
 
 	aliases {
-		fan-pwm   = &fan_pwm_ch;
-		fan-power = &fan_power;
-		sht3x     = &sht3x;
+		fan-pwm     = &fan_pwm_ch;
+		fan-power   = &fan_power;
+		sht3x       = &sht3x;
+		/* BUTTON3 on PCA10040 (P0.15). Hold for 5 s to reopen the
+		 * 120 s BLE pairing window. The DK board file already
+		 * declares button2 with proper GPIO_PULL_UP|ACTIVE_LOW. */
+		pairing-btn = &button2;
 	};
 };

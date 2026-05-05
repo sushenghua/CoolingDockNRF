@@ -71,6 +71,28 @@ Five application threads dynamically spawned from `main()` (Style B — explicit
 - MTU enlarged to 247 (`CONFIG_BT_L2CAP_TX_MTU`) so 200-byte frontend chunks fit in single L2CAP frames.
 - LE Secure Connections, just-works, bondable. Bond stored via `CONFIG_BT_SETTINGS=y`. The frontend never calls a pair API; the OS BLE stack triggers pairing automatically on first encrypted read.
 
+### Pairing window protocol (`ble_svc.c`)
+
+Two advertising modes: `ADV_OPEN` (any client) and `ADV_BONDED_ONLY` (Filter Accept List restricts incoming connections to previously-bonded peers). State machine:
+
+| Event | Transition |
+|---|---|
+| Boot | mode = OPEN, schedule 120 s timer, start adv |
+| `pairing_complete(bonded=true)` | mode = BONDED_ONLY, cancel timer (locked in) |
+| 120 s timer fires (no pairing happened) | mode = BONDED_ONLY (FAL may be empty → no one can connect) |
+| BUTTON3 (P0.15) held ≥ 5 s | mode = OPEN, reschedule 120 s timer, re-arm adv |
+| Disconnect | re-arm adv in whatever mode is current |
+
+Implementation pieces in `ble_svc.c`:
+- `adv_mode_v` (`atomic_t`) — the OPEN / BONDED_ONLY flag
+- `pairing_window_work` — `k_work_delayable`, fires after 120 s
+- `auth_info_cb.pairing_complete` — Zephyr's bond-completion callback
+- `fal_repopulate()` — `bt_le_filter_accept_list_clear` + `bt_foreach_bond` → `bt_le_filter_accept_list_add`
+- `pairing_btn` GPIO with edge-both interrupt + a `btn_hold_work` deferred 5 s; cancelled if button released early
+- `start_advertising()` — single helper; checks current mode, repopulates FAL if needed, starts with `ADV_OPEN_PARAM` or `ADV_BONDED_ONLY_PARAM`
+
+**Soft-brick recovery**: if the device boots fresh with no bond and no client pairs within 120 s, advertising stops (FAL is empty). Hold BUTTON3 for 5 s to reopen the window. If the button is unavailable (e.g., overlay alias missing), only a chip-erase + reflash recovers — `west flash --erase` does both.
+
 ### Status / DevInfo / PrpConf JSON shapes
 
 Status (every 500 ms):
