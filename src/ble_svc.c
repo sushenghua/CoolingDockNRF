@@ -48,30 +48,46 @@ static const struct bt_uuid_128 uuid_prpconf = BT_UUID_INIT_128(UUID_PRPCONF_VAL
 
 /* ------------------------------------------------------- adv data
  *
- * The complete-local-name AD entry is added by the host itself when the
- * BT_LE_ADV_OPT_USE_NAME flag is set on the adv params; we don't put it
- * in `ad[]` so that bt_set_name() at runtime takes effect without us
- * rebuilding this array. */
+ * NCS v3.3 / Zephyr 4.x removed BT_LE_ADV_OPT_USE_NAME — we have to put
+ * the name TLV in `ad[]` ourselves. To stay responsive to bt_set_name()
+ * at runtime, we rebuild this array (see build_ad below) right before
+ * each bt_le_adv_start, reading the current value via bt_get_name().
+ */
 
-static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-};
+static const uint8_t flags_byte = (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR);
+static struct bt_data ad[2];
+
+static void build_ad(void)
+{
+	const char *name = bt_get_name();
+	size_t name_len = name ? strlen(name) : 0;
+
+	ad[0] = (struct bt_data){
+		.type     = BT_DATA_FLAGS,
+		.data_len = sizeof(flags_byte),
+		.data     = &flags_byte,
+	};
+	ad[1] = (struct bt_data){
+		.type     = BT_DATA_NAME_COMPLETE,
+		.data_len = (uint8_t)name_len,
+		.data     = (const uint8_t *)name,
+	};
+}
+
 static const struct bt_data sd[] = {
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL, UUID_SVC_VAL),
 };
 
-/* Connectable, accepts any peer — used during the open pairing window.
- * USE_NAME makes the host insert the current bt_get_name() value. */
+/* Connectable, accepts any peer — used during the open pairing window. */
 #define ADV_OPEN_PARAM \
-	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_USE_NAME, \
+	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN, \
 			BT_GAP_ADV_FAST_INT_MIN_1, \
 			BT_GAP_ADV_FAST_INT_MAX_1, NULL)
 
 /* Connectable, but Filter Accept List restricts which peers can connect —
  * used after the open window expires (or after a successful pairing). */
 #define ADV_BONDED_ONLY_PARAM \
-	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_FILTER_CONN | \
-			BT_LE_ADV_OPT_USE_NAME, \
+	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_FILTER_CONN, \
 			BT_GAP_ADV_FAST_INT_MIN_2, \
 			BT_GAP_ADV_FAST_INT_MAX_2, NULL)
 
@@ -160,6 +176,10 @@ static int fal_repopulate(void)
 static int start_advertising_now(void)
 {
 	(void)bt_le_adv_stop();   /* idempotent */
+
+	/* Re-read the current device name from the host so SetDeviceName
+	 * mutations take effect on the next ADV_IND packet. */
+	build_ad();
 
 	if (atomic_get(&adv_mode_v) == ADV_BONDED_ONLY) {
 		int n = fal_repopulate();
