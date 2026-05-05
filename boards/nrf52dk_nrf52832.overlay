@@ -27,6 +27,13 @@
 	};
 };
 
+/* P0.13 / P0.14 are also BUTTON1 / BUTTON2 on PCA10040; we use them as
+ * fan PWM and fan-power-gate outputs, so disable the board's button
+ * nodes for those pins to prevent a future Kconfig flip from claiming
+ * them under us. */
+&button0 { status = "disabled"; };
+&button1 { status = "disabled"; };
+
 /* --------------------------------------------------------------------- I2C0 */
 
 &i2c0 {

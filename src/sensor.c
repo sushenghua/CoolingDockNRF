@@ -11,11 +11,13 @@ LOG_MODULE_REGISTER(sensor, LOG_LEVEL_INF);
 #define SENSOR_STACK_SIZE  1024
 #define SENSOR_PRIORITY    5
 #define SAMPLE_PERIOD_MS   500
+#define SAMPLE_STALE_MS    5000   /* report -EAGAIN if last good sample older than this */
 
 static const struct device *const sht = DEVICE_DT_GET(DT_ALIAS(sht3x));
 
 static K_MUTEX_DEFINE(latest_mu);
 static struct sensor_reading latest;
+static int64_t latest_uptime_ms;
 
 static K_THREAD_STACK_DEFINE(sensor_stack, SENSOR_STACK_SIZE);
 static struct k_thread sensor_tcb;
@@ -24,7 +26,7 @@ int sensor_get(struct sensor_reading *out)
 {
 	int rc = -EAGAIN;
 	k_mutex_lock(&latest_mu, K_FOREVER);
-	if (latest.valid) {
+	if (latest.valid && (k_uptime_get() - latest_uptime_ms) < SAMPLE_STALE_MS) {
 		*out = latest;
 		rc = 0;
 	}
@@ -59,6 +61,7 @@ static void sensor_thread(void *p1, void *p2, void *p3)
 			latest.temp_centi_c    = (int16_t)tc;
 			latest.humid_centi_pct = (uint16_t)hc;
 			latest.valid           = true;
+			latest_uptime_ms       = k_uptime_get();
 			k_mutex_unlock(&latest_mu);
 
 			LOG_DBG("T=%d.%02d C  H=%u.%02u %%",

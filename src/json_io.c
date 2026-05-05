@@ -40,10 +40,13 @@ ssize_t jsf_status(char *out, size_t cap,
 	     master_on ? "true" : "false");
 
 	if (sample_valid) {
-		int t_int = temp_centi_c / 100;
-		int t_frac = (temp_centi_c < 0 ? -temp_centi_c : temp_centi_c) % 100;
-		EMIT("\"temp\":%d.%02d,\"humid\":%u.%02u",
-		     t_int, t_frac,
+		int  t_int   = temp_centi_c / 100;
+		int  t_frac  = (temp_centi_c < 0 ? -temp_centi_c : temp_centi_c) % 100;
+		/* When -1.00 < temp < 0.00, integer truncation makes t_int 0
+		 * and we'd lose the sign; print the minus explicitly. */
+		const char *sign = (temp_centi_c < 0 && t_int == 0) ? "-" : "";
+		EMIT("\"temp\":%s%d.%02d,\"humid\":%u.%02u",
+		     sign, t_int, t_frac,
 		     (unsigned)(humid_centi_pct / 100),
 		     (unsigned)(humid_centi_pct % 100));
 	} else {
@@ -111,10 +114,19 @@ static const char *find_value(const char *json, const char *key)
 	const char *p = json;
 
 	while ((p = strstr(p, key)) != NULL) {
-		/* Require quoted key: "key": ... */
+		/* Match must be a quoted KEY (i.e. followed by ':'), not the
+		 * value of a different key. Without this check, searching for
+		 * "name" in {"key":"name","name":"foo"} would hit the value
+		 * "name" first. */
 		if (p > json && p[-1] == '"' && p[keylen] == '"') {
 			const char *q = p + keylen + 1;
-			while (*q && (*q == ' ' || *q == '\t' || *q == ':')) q++;
+			while (*q == ' ' || *q == '\t') q++;
+			if (*q != ':') {
+				p += keylen;
+				continue;        /* it was a string value */
+			}
+			q++;
+			while (*q == ' ' || *q == '\t') q++;
 			if (*q) return q;
 		}
 		p += keylen;
@@ -129,7 +141,15 @@ int jsp_get_str(const char *json, const char *key, char *out, size_t cap)
 	if (*v != '"') return -EINVAL;
 	v++;
 	size_t i = 0;
-	while (*v && *v != '"' && i + 1 < cap) {
+	while (*v && i + 1 < cap) {
+		if (*v == '\\' && v[1]) {
+			/* Pass through one escape (\", \\, \/, etc). Just copy
+			 * the next char verbatim; no full unicode handling. */
+			v++;
+			out[i++] = *v++;
+			continue;
+		}
+		if (*v == '"') break;
 		out[i++] = *v++;
 	}
 	if (*v != '"') return -EINVAL;

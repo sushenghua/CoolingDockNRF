@@ -12,6 +12,20 @@ LOG_MODULE_REGISTER(sys_data, LOG_LEVEL_INF);
 #define KEY_NAME    "name"
 #define KEY_PRF0    "p0"
 
+/* Persisted-blob format for prf_cfg.
+ *   magic   identifies CoolingDock prf data and lets us reject foreign
+ *           or corrupted blobs.
+ *   version  bumps when struct prf_cfg layout changes; mismatch falls
+ *           back to defaults. */
+#define PRF_BLOB_MAGIC    0xCD42u
+#define PRF_BLOB_VERSION  1u
+
+struct prf_blob {
+	uint16_t        magic;
+	uint16_t        version;
+	struct prf_cfg  cfg;
+};
+
 static K_MUTEX_DEFINE(state_mu);
 
 static struct {
@@ -58,7 +72,17 @@ static int sys_set_cb(const char *key, size_t len,
 			state.name[take] = '\0';
 		}
 	} else if (!strncmp(key, KEY_PRF0, name_len)) {
-		rc = read_cb(cb_arg, &state.prf[0], sizeof(state.prf[0]));
+		struct prf_blob blob = { 0 };
+		rc = read_cb(cb_arg, &blob, sizeof(blob));
+		if (rc >= 0 &&
+		    blob.magic == PRF_BLOB_MAGIC &&
+		    blob.version == PRF_BLOB_VERSION) {
+			state.prf[0] = blob.cfg;
+		} else {
+			LOG_WRN("prf blob magic/version mismatch (got 0x%04x v%u, len %u) — using defaults",
+				blob.magic, blob.version, (unsigned)len);
+			rc = -EINVAL;
+		}
 	}
 
 	k_mutex_unlock(&state_mu);
@@ -94,19 +118,30 @@ bool sys_data_get_master(void)
 
 int sys_data_set_master(bool on)
 {
+	bool snapshot;
+
 	k_mutex_lock(&state_mu, K_FOREVER);
 	state.master = on;
-	int rc = settings_save_one("app/" KEY_MASTER, &state.master, sizeof(state.master));
+	snapshot = state.master;
 	k_mutex_unlock(&state_mu);
+
+	int rc = settings_save_one("app/" KEY_MASTER, &snapshot, sizeof(snapshot));
 	if (rc) LOG_ERR("save master: %d", rc);
 	return rc;
 }
 
 /* --------------------------------------------------------- device name */
 
-const char *sys_data_get_name(void)
+int sys_data_get_name(char *out, size_t cap)
 {
-	return state.name;   /* writes are atomic enough for read-mostly use */
+	if (!out || cap == 0) return -EINVAL;
+	k_mutex_lock(&state_mu, K_FOREVER);
+	size_t len = strnlen(state.name, sizeof(state.name));
+	if (len >= cap) len = cap - 1;
+	memcpy(out, state.name, len);
+	out[len] = '\0';
+	k_mutex_unlock(&state_mu);
+	return 0;
 }
 
 int sys_data_set_name(const char *name)
@@ -115,11 +150,15 @@ int sys_data_set_name(const char *name)
 	size_t len = strnlen(name, SYS_DEVICE_NAME_MAX);
 	if (len == 0 || len >= SYS_DEVICE_NAME_MAX) return -EINVAL;
 
+	char snapshot[SYS_DEVICE_NAME_MAX];
+
 	k_mutex_lock(&state_mu, K_FOREVER);
 	memcpy(state.name, name, len);
 	state.name[len] = '\0';
-	int rc = settings_save_one("app/" KEY_NAME, state.name, len);
+	memcpy(snapshot, state.name, len);
 	k_mutex_unlock(&state_mu);
+
+	int rc = settings_save_one("app/" KEY_NAME, snapshot, len);
 	if (rc) LOG_ERR("save name: %d", rc);
 	return rc;
 }
@@ -139,10 +178,17 @@ int sys_data_set_prf(uint8_t idx, const struct prf_cfg *cfg)
 {
 	if (idx >= SYS_PRF_COUNT || !cfg) return -EINVAL;
 
+	struct prf_blob blob = {
+		.magic = PRF_BLOB_MAGIC,
+		.version = PRF_BLOB_VERSION,
+	};
+
 	k_mutex_lock(&state_mu, K_FOREVER);
 	state.prf[idx] = *cfg;
-	int rc = settings_save_one("app/" KEY_PRF0, &state.prf[idx], sizeof(*cfg));
+	blob.cfg = state.prf[idx];
 	k_mutex_unlock(&state_mu);
+
+	int rc = settings_save_one("app/" KEY_PRF0, &blob, sizeof(blob));
 	if (rc) LOG_ERR("save prf%u: %d", idx, rc);
 	return rc;
 }

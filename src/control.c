@@ -4,6 +4,7 @@
 #include "fan.h"
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
@@ -19,11 +20,23 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 static K_THREAD_STACK_DEFINE(control_stack, CONTROL_STACK_SIZE);
 static struct k_thread control_tcb;
 
-static uint8_t actual_pwm;        /* what we last commanded */
-static const char *status_str = "unknown";
+/* Read by the BLE thread, written by the control thread. Use atomics so
+ * the C model can't tear or reorder. */
+enum status_v { STAT_UNKNOWN = 0, STAT_RUNNING, STAT_STOPPED };
 
-uint8_t     control_get_actual_pwm(void) { return actual_pwm; }
-const char *control_get_status(void)     { return status_str; }
+static atomic_t actual_pwm_a = ATOMIC_INIT(0);
+static atomic_t status_a     = ATOMIC_INIT(STAT_UNKNOWN);
+
+uint8_t control_get_actual_pwm(void) { return (uint8_t)atomic_get(&actual_pwm_a); }
+
+const char *control_get_status(void)
+{
+	switch (atomic_get(&status_a)) {
+	case STAT_RUNNING: return "running";
+	case STAT_STOPPED: return "stopped";
+	default:           return "unknown";
+	}
+}
 
 /* Compute the target duty for SENSOR mode: 0 below thr1, FAN_LOW_PCT in the
  * dead band, then linear ramp to FAN_HIGH_PCT at thr2. */
@@ -46,9 +59,10 @@ static uint8_t sensor_mode_pwm(int16_t temp_centi_c, int16_t thr1, int16_t thr2)
 	return (uint8_t)pct;
 }
 
-/* CYCLE mode: alternate between cfg.pwm_pct (or 100 if pwm_pct==0) and 0,
- * with cfg.con_sec / cfg.coff_sec dwell times. Phase tracked via
- * cycle_elapsed_ms which the caller maintains across iterations. */
+/* CYCLE mode: alternate between cfg.pwm_pct and 0 with cfg.con_sec /
+ * cfg.coff_sec dwell times. pwm_pct=0 means "off during the on phase
+ * too" (i.e. effectively disabled — caller likely intends mode=power
+ * off in that case, but we honor the literal request). */
 static uint8_t cycle_mode_pwm(const struct prf_cfg *cfg, uint32_t cycle_elapsed_ms)
 {
 	uint32_t on_ms  = (uint32_t)cfg->con_sec  * 1000;
@@ -56,10 +70,7 @@ static uint8_t cycle_mode_pwm(const struct prf_cfg *cfg, uint32_t cycle_elapsed_
 	if (on_ms + off_ms == 0) return 0;
 
 	uint32_t phase = cycle_elapsed_ms % (on_ms + off_ms);
-	if (phase < on_ms) {
-		return cfg->pwm_pct ? cfg->pwm_pct : 100;
-	}
-	return 0;
+	return (phase < on_ms) ? cfg->pwm_pct : 0;
 }
 
 static void apply_cfg(const struct prf_cfg *cfg, int16_t temp_centi_c, bool temp_valid,
@@ -94,8 +105,8 @@ static void apply_cfg(const struct prf_cfg *cfg, int16_t temp_centi_c, bool temp
 	fan_power_set(power_on);
 	fan_set_percent(target);
 
-	actual_pwm = target;
-	status_str = power_on ? "running" : "stopped";
+	atomic_set(&actual_pwm_a, target);
+	atomic_set(&status_a, power_on ? STAT_RUNNING : STAT_STOPPED);
 }
 
 static void control_thread(void *p1, void *p2, void *p3)
@@ -103,7 +114,8 @@ static void control_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
 
 	uint32_t cycle_elapsed_ms = 0;
-	uint8_t  prev_mode = 0xff;
+	uint8_t  prev_mode = 0;
+	bool     have_prev_mode = false;
 
 	LOG_INF("control thread up (period %d ms)", CONTROL_PERIOD_MS);
 
@@ -115,16 +127,17 @@ static void control_thread(void *p1, void *p2, void *p3)
 		bool temp_valid = (sensor_get(&r) == 0);
 		bool master = sys_data_get_master();
 
-		if (cfg.mode != prev_mode) {
+		if (!have_prev_mode || cfg.mode != prev_mode) {
 			cycle_elapsed_ms = 0;
 			prev_mode = cfg.mode;
+			have_prev_mode = true;
 		}
 
 		if (!master) {
 			fan_power_set(false);
 			fan_set_percent(0);
-			actual_pwm = 0;
-			status_str = "stopped";
+			atomic_set(&actual_pwm_a, 0);
+			atomic_set(&status_a, STAT_STOPPED);
 		} else {
 			apply_cfg(&cfg, r.temp_centi_c, temp_valid, cycle_elapsed_ms);
 		}

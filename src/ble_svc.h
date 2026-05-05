@@ -9,4 +9,9 @@
  * them. */
 int  ble_svc_start(void);
 
+/* Push a new device name into the BT host (bt_set_name + adv re-arm).
+ * Called by cmd_interpreter after SetDeviceName mutates sys_data so the
+ * advertised name actually reflects what GetDeviceInfo reports. */
+int  ble_svc_apply_name(const char *name);
+
 #endif /* APP_BLE_SVC_H_ */

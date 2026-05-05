@@ -3,6 +3,7 @@
 #include "sensor.h"
 #include "control.h"
 #include "json_io.h"
+#include "ble_svc.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -17,6 +18,15 @@ LOG_MODULE_REGISTER(cmd_interpreter, LOG_LEVEL_INF);
 
 #define FW_VERSION  "0.1.0"
 #define BOARD_NAME  CONFIG_BOARD
+
+/* UpdateRet `code` values that the frontend understands. The original
+ * CoolingDock spec defines 0=success, 1=already-up-to-date, 12=progress.
+ * We use a small disjoint set of failure codes that don't collide. */
+#define URET_OK         0
+#define URET_NOOP       1   /* already in requested state */
+#define URET_FAIL       2   /* generic failure (I/O, write, …) */
+#define URET_BAD_REQ    3   /* malformed args, missing fields, bad mode */
+#define URET_UNSUPP     4   /* unknown command */
 
 static char uid_str[17];   /* 16 hex + NUL */
 
@@ -71,8 +81,9 @@ static ssize_t handle_get_status(char *out, size_t cap)
 
 static ssize_t handle_get_devinfo(char *out, size_t cap)
 {
-	return jsf_devinfo(out, cap, sys_data_get_name(),
-			   FW_VERSION, uid_str, BOARD_NAME);
+	char name[SYS_DEVICE_NAME_MAX];
+	(void)sys_data_get_name(name, sizeof(name));
+	return jsf_devinfo(out, cap, name, FW_VERSION, uid_str, BOARD_NAME);
 }
 
 static ssize_t handle_get_prpconf(char *out, size_t cap)
@@ -87,18 +98,18 @@ static ssize_t handle_set_peripheral(const char *json, char *out, size_t cap)
 	int32_t idx = 0;
 	(void)jsp_get_int(json, "index", &idx);
 	if (idx < 0 || idx >= SYS_PRF_COUNT) {
-		return jsf_updateret(out, cap, EINVAL, "bad index");
+		return jsf_updateret(out, cap, URET_BAD_REQ, "bad index");
 	}
 
 	struct prf_cfg cfg;
 	if (sys_data_get_prf((uint8_t)idx, &cfg) != 0) {
-		return jsf_updateret(out, cap, EIO, NULL);
+		return jsf_updateret(out, cap, URET_FAIL, NULL);
 	}
 
 	char mode_s[16] = {0};
 	if (jsp_get_str(json, "mode", mode_s, sizeof(mode_s)) != 0 ||
 	    parse_mode(mode_s, &cfg.mode) != 0) {
-		return jsf_updateret(out, cap, EINVAL, "bad mode");
+		return jsf_updateret(out, cap, URET_BAD_REQ, "bad mode");
 	}
 
 	int32_t i32;
@@ -121,7 +132,7 @@ static ssize_t handle_set_peripheral(const char *json, char *out, size_t cap)
 		if (jsp_get_int(json, "thr1", &i32) == 0) cfg.thr1_c = (int16_t)i32;
 		if (jsp_get_int(json, "thr2", &i32) == 0) cfg.thr2_c = (int16_t)i32;
 		if (cfg.thr2_c <= cfg.thr1_c) {
-			return jsf_updateret(out, cap, EINVAL, "thr2<=thr1");
+			return jsf_updateret(out, cap, URET_BAD_REQ, "thr2<=thr1");
 		}
 		break;
 
@@ -147,42 +158,46 @@ static ssize_t handle_set_peripheral(const char *json, char *out, size_t cap)
 	}
 
 	int rc = sys_data_set_prf((uint8_t)idx, &cfg);
-	return jsf_updateret(out, cap, rc == 0 ? 0 : EIO, NULL);
+	return jsf_updateret(out, cap, rc == 0 ? URET_OK : URET_FAIL, NULL);
 }
 
 static ssize_t handle_set_master(const char *json, char *out, size_t cap)
 {
 	bool on;
-	if (jsp_get_bool(json, "on",     &on) != 0 &&
-	    jsp_get_bool(json, "enable", &on) != 0 &&
-	    jsp_get_bool(json, "ms",     &on) != 0) {
-		return jsf_updateret(out, cap, EINVAL, "missing flag");
+	/* Frontend sends `{cmd: "SetMasterControl", on: <bool>}` (verified
+	 * against react_projects/CoolingDock/src/App.tsx). */
+	if (jsp_get_bool(json, "on", &on) != 0) {
+		return jsf_updateret(out, cap, URET_BAD_REQ, "missing on");
 	}
 	int rc = sys_data_set_master(on);
-	return jsf_updateret(out, cap, rc == 0 ? 0 : EIO, NULL);
+	return jsf_updateret(out, cap, rc == 0 ? URET_OK : URET_FAIL, NULL);
 }
 
 static ssize_t handle_set_name(const char *json, char *out, size_t cap)
 {
 	char name[SYS_DEVICE_NAME_MAX];
 	if (jsp_get_str(json, "name", name, sizeof(name)) != 0) {
-		return jsf_updateret(out, cap, EINVAL, "missing name");
+		return jsf_updateret(out, cap, URET_BAD_REQ, "missing name");
 	}
 	int rc = sys_data_set_name(name);
-	return jsf_updateret(out, cap, rc == 0 ? 0 : EIO, NULL);
+	if (rc == 0) {
+		/* Push the new name into the BLE host so adv + GAP reflect it. */
+		(void)ble_svc_apply_name(name);
+	}
+	return jsf_updateret(out, cap, rc == 0 ? URET_OK : URET_FAIL, NULL);
 }
 
 static ssize_t handle_restart(char *out, size_t cap)
 {
 	k_work_schedule(&reboot_work, K_MSEC(500));
-	return jsf_updateret(out, cap, 0, "rebooting");
+	return jsf_updateret(out, cap, URET_OK, "rebooting");
 }
 
 static ssize_t handle_factory(char *out, size_t cap)
 {
 	int rc = sys_data_factory_reset();
 	if (rc == 0) k_work_schedule(&reboot_work, K_MSEC(500));
-	return jsf_updateret(out, cap, rc == 0 ? 0 : EIO, "factory reset");
+	return jsf_updateret(out, cap, rc == 0 ? URET_OK : URET_FAIL, "factory reset");
 }
 
 /* ----------------------------------------------------- entry point */
@@ -195,7 +210,7 @@ ssize_t cmd_interpreter_dispatch(const char *json_in, size_t in_len,
 
 	char cmd[40];
 	if (jsp_get_str(json_in, "cmd", cmd, sizeof(cmd)) != 0) {
-		return jsf_updateret(json_out, out_cap, EINVAL, "no cmd");
+		return jsf_updateret(json_out, out_cap, URET_BAD_REQ, "no cmd");
 	}
 
 	LOG_DBG("dispatch cmd=%s", cmd);
@@ -210,5 +225,5 @@ ssize_t cmd_interpreter_dispatch(const char *json_in, size_t in_len,
 	if (!strcmp(cmd, "RestoreFactory"))          return handle_factory(json_out, out_cap);
 
 	LOG_WRN("unknown cmd: %s", cmd);
-	return jsf_updateret(json_out, out_cap, ENOTSUP, "unknown cmd");
+	return jsf_updateret(json_out, out_cap, URET_UNSUPP, "unknown cmd");
 }

@@ -40,10 +40,10 @@ int  sys_data_init(void);
 bool sys_data_get_master(void);
 int  sys_data_set_master(bool on);
 
-/* Friendly device name. Returned pointer is to internal storage; copy if
- * caller needs to retain across sys_data_set_name() calls. */
-const char *sys_data_get_name(void);
-int         sys_data_set_name(const char *name);
+/* Friendly device name. Copies into the caller's buffer under lock;
+ * returns 0 on success or -EINVAL. `cap` must be ≥ 1. */
+int sys_data_get_name(char *out, size_t cap);
+int sys_data_set_name(const char *name);
 
 /* Peripheral config. idx must be < SYS_PRF_COUNT (== 1 for now). */
 int sys_data_get_prf(uint8_t idx, struct prf_cfg *out);
