@@ -1,4 +1,5 @@
 #include "control.h"
+#include "control_logic.h"
 #include "sys_data.h"
 #include "sensor.h"
 #include "fan.h"
@@ -12,10 +13,6 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 #define CONTROL_STACK_SIZE  1024
 #define CONTROL_PRIORITY    5
 #define CONTROL_PERIOD_MS   1000
-
-#define SENSOR_DEAD_BAND_C  2     /* °C of pure-low band above thr1 */
-#define FAN_LOW_PCT         30
-#define FAN_HIGH_PCT        100
 
 static K_THREAD_STACK_DEFINE(control_stack, CONTROL_STACK_SIZE);
 static struct k_thread control_tcb;
@@ -38,40 +35,8 @@ const char *control_get_status(void)
 	}
 }
 
-/* Compute the target duty for SENSOR mode: 0 below thr1, FAN_LOW_PCT in the
- * dead band, then linear ramp to FAN_HIGH_PCT at thr2. */
-static uint8_t sensor_mode_pwm(int16_t temp_centi_c, int16_t thr1, int16_t thr2)
-{
-	int32_t t1 = (int32_t)thr1 * 100;
-	int32_t t2 = (int32_t)thr2 * 100;
-	int32_t db = t1 + SENSOR_DEAD_BAND_C * 100;
-
-	if (temp_centi_c <= t1) return 0;
-	if (temp_centi_c >= t2) return FAN_HIGH_PCT;
-	if (temp_centi_c <  db) return FAN_LOW_PCT;
-	if (t2 <= db)           return FAN_HIGH_PCT;
-
-	int32_t span = t2 - db;
-	int32_t over = temp_centi_c - db;
-	int32_t pct  = FAN_LOW_PCT + (FAN_HIGH_PCT - FAN_LOW_PCT) * over / span;
-	if (pct < 0)   pct = 0;
-	if (pct > 100) pct = 100;
-	return (uint8_t)pct;
-}
-
-/* CYCLE mode: alternate between cfg.pwm_pct and 0 with cfg.con_sec /
- * cfg.coff_sec dwell times. pwm_pct=0 means "off during the on phase
- * too" (i.e. effectively disabled — caller likely intends mode=power
- * off in that case, but we honor the literal request). */
-static uint8_t cycle_mode_pwm(const struct prf_cfg *cfg, uint32_t cycle_elapsed_ms)
-{
-	uint32_t on_ms  = (uint32_t)cfg->con_sec  * 1000;
-	uint32_t off_ms = (uint32_t)cfg->coff_sec * 1000;
-	if (on_ms + off_ms == 0) return 0;
-
-	uint32_t phase = cycle_elapsed_ms % (on_ms + off_ms);
-	return (phase < on_ms) ? cfg->pwm_pct : 0;
-}
+/* sensor_mode_pwm() and cycle_mode_pwm() now live in control_logic.{h,c}
+ * so they can be unit-tested on the host without dragging in Zephyr. */
 
 static void apply_cfg(const struct prf_cfg *cfg, int16_t temp_centi_c, bool temp_valid,
 		      uint32_t cycle_elapsed_ms)
