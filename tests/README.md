@@ -4,63 +4,49 @@ Six-tier test setup mirroring industrial embedded practice.
 
 ```
 tests/
-  unit/                          host-side, sub-second
-    json_io/                     ztest, native_sim, ASan + UBSan + gcov
-    control_logic/               ztest, native_sim, ASan + UBSan + gcov
+  unit/                                host-side, sub-second
+    test_harness.{h,c}                 lightweight TEST + ASSERT_* macros
+    json_io/src/test_json_io.c         24 cases
+    control_logic/src/test_control_logic.c  11 cases
   integration/
-    persistence/                 ztest, native_sim, real settings + NVS
+    persistence/
+      src/{test_persistence,stubs}.c   8 cases — full cmd → sys_data → settings path
+      fakes/                           Zephyr API shims (settings, kernel, log, FICR)
   hil/
-    smoke.py                     bleak; runs against a flashed nRF52 DK
+    smoke.py                           bleak; runs against a flashed nRF52 DK
     requirements.txt
 scripts/
-  run_static_analysis.sh         clang-tidy over compile_commands.json
-  run_coverage.sh                lcov + genhtml after twister
+  run_tests.sh                         build + run all unit + integration suites
+  run_static_analysis.sh               clang-tidy over compile_commands.json
+  run_coverage.sh                      lcov + genhtml after run_tests.sh
 ```
 
-All tier-1/2 tests are run by Zephyr's [twister](https://docs.zephyrproject.org/latest/develop/test/twister.html). Activate the NCS environment first (`ncs` per the project's bash function), then run from the project root.
+> **Why we don't use Zephyr's `twister` for tiers 1-2.** NCS v3.3.0 hard-blocks `native_sim` on macOS at the arch level (`zephyr/arch/posix/CMakeLists.txt:3` raises `FATAL_ERROR` on Darwin) AND its `unit_testing` board can't compile any `ZTEST(...)` macro because Zephyr's iterable-sections feature uses ELF section attributes that Mach-O rejects. Both walls are inherent to NCS v3.3.
+>
+> The workaround:
+>
+> - **Unit tests** use a tiny custom harness (`tests/unit/test_harness.{h,c}`) — header-only `TEST(name)` + `ASSERT_*` macros, auto-registered via `__attribute__((constructor))`. Compiled with `cc` directly, no Zephyr.
+> - **Integration test** compiles the *real* `sys_data` + `cmd_interpreter` + `json_io` production code against thin Zephyr-API shims in `tests/integration/persistence/fakes/` (in-memory settings backend, pthread mutexes, no-op work queue, fixed FICR). The production source files are untouched; only the slice of Zephyr API they consume is faked.
+>
+> Same testing power as ztest+twister, no Zephyr scaffolding, runs anywhere `cc` does.
 
-> **macOS — Zephyr's test framework is unavailable.** NCS v3.3.0 hard-blocks `native_sim` (`zephyr/arch/posix/CMakeLists.txt:3` — `FATAL_ERROR` on Darwin) AND the `unit_testing` board fails to compile any `ZTEST(...)` macro because Zephyr's iterable-sections feature uses ELF section attributes that Mach-O rejects. Both walls are inherent to NCS v3.3.
->
-> All three tiers are wired around this:
->
-> - **Unit tests** use a tiny custom harness in `tests/unit/test_harness.{h,c}` (header-only `TEST(name)` + `ASSERT_*` macros, auto-registered via `__attribute__((constructor))`) and compile with `cc` directly.
-> - **Integration test** compiles the real `sys_data` + `cmd_interpreter` + `json_io` production code against thin Zephyr-API shims in `tests/integration/persistence/fakes/` (in-memory settings backend, pthread mutexes, no-op work queue, fixed FICR). Same source code, no Zephyr build needed.
->
-> ASan + UBSan + gcov are wired in via `scripts/run_tests.sh`. Same testing power on macOS as on Linux.
->
-> Run on any host:
->
-> ```sh
-> ./scripts/run_tests.sh
-> ```
->
-> The wrapper invokes `west build -b native_sim` per test and runs the resulting executable directly. Linux users *can* still use the twister commands shown below if they prefer — the twister output format gives nicer summaries.
-
-> **Toolchain override (Linux + macOS).** The NCS env defaults to `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` (ARM cross-compiler) but native_sim needs `host`. The wrapper script and the twister commands below all set it.
-
-## Tier 1 — host unit tests
+## Tier 1 + 2 — unit + integration (host)
 
 ```sh
-ZEPHYR_TOOLCHAIN_VARIANT=host west twister -p native_sim --force-toolchain -T tests/unit
+./scripts/run_tests.sh
 ```
 
-Builds and runs `json_io` and `control_logic` suites under AddressSanitizer + UndefinedBehaviorSanitizer, with gcov instrumentation. Each suite finishes in well under a second.
+Builds and runs all three suites under **AddressSanitizer + UndefinedBehaviorSanitizer + gcov**. Each suite is its own native binary in `build/test_<name>/run_test`. Per-test PASS/FAIL, summary at the end.
 
-To run just one suite:
+| Suite | Cases | What it covers |
+|---|---|---|
+| `unit/json_io` | 24 | All 7 functions in `src/json_io.c`; regression tests for the negative-temp sign, key-vs-value parser confusion, and escape passthrough bugs |
+| `unit/control_logic` | 11 | All four hysteresis bands + cycle phase logic in `src/control_logic.c` |
+| `integration/persistence` | 8 | End-to-end `BLE write → cmd_interpreter → sys_data → settings → reload → state survives` against the real production code |
 
-```sh
-ZEPHYR_TOOLCHAIN_VARIANT=host west twister -p native_sim --force-toolchain -T tests/unit/json_io --inline-logs
-```
+Total wall time on a modest Mac: ~3 s.
 
-## Tier 2 — native_sim integration
-
-```sh
-ZEPHYR_TOOLCHAIN_VARIANT=host west twister -p native_sim --force-toolchain -T tests/integration
-```
-
-`tests/integration/persistence/` boots the real `sys_data` + `cmd_interpreter` + `json_io` modules on top of Zephyr's flash simulator. It exercises the end-to-end `BLE write → cmd_interpreter → sys_data → settings → NVS → reload → state recovered` path, plus negative cases (bad mode rejected without mutating state, unknown command, etc.). The hardware-touching modules (`sensor`, `control`, `ble_svc`) are stubbed in `tests/integration/persistence/src/stubs.c` so the test focuses on the persistence pipeline.
-
-## Tier 3 — HIL smoke
+## Tier 3 — HIL smoke (real hardware)
 
 Requires a flashed and powered nRF52 DK plus a host with a working BLE adapter (macOS, Linux with BlueZ, or Windows 10+).
 
@@ -71,33 +57,41 @@ pip install -r requirements.txt
 python smoke.py
 ```
 
-The script walks the wire-contract checklist: scan by name prefix, connect (OS triggers just-works pairing on first encrypted read), read `DevInfo` + `PrpConf`, subscribe to `Status`, send `SetPeripheralConfig`, verify `UpdateRet` and that the next `PrpConf` read reflects the change.
+Walks the wire-contract checklist: scan by name prefix → connect (OS triggers just-works pairing on first encrypted read) → read `DevInfo` + `PrpConf` → subscribe to `Status` → send `SetPeripheralConfig` → verify `UpdateRet` and that the next `PrpConf` read reflects the change.
 
 Pass `python smoke.py SomeOtherPrefix` to scan for a different name prefix.
 
 If the device is in BONDED_ONLY mode (post-120 s window) and the host hasn't paired before, the connection will time out — hold BUTTON3 on the DK for 5 s to reopen the pairing window.
 
-## Static analysis
+## Tier 4 — static analysis
 
 ```sh
-west build -b nrf52dk/nrf52832 -p always .   # generates compile_commands.json
+west build -b nrf52dk/nrf52832 -p always .   # generates build/nrf52dk/compile_commands.json
 ./scripts/run_static_analysis.sh
 ```
 
-Runs `clang-tidy` against just our `src/*.c` files (not Zephyr internals) with `bugprone-*`, `performance-*`, `portability-*`, and `readability-*` checks enabled.
+Runs `clang-tidy` against just `src/*.c` (not Zephyr internals) with `bugprone-*`, `performance-*`, `portability-*`, and `readability-*` checks enabled. The build itself doesn't need hardware — only `west flash` does.
 
-## Coverage
+## Tier 5 — sanitizers
 
-```sh
-./scripts/run_coverage.sh
-open coverage/html/index.html        # macOS
+ASan + UBSan are baked into the compile + link flags inside `scripts/run_tests.sh`:
+
+```
+-fsanitize=address,undefined -fno-sanitize-recover=all
 ```
 
-Builds and runs every native_sim test, captures gcov output, runs lcov to produce `coverage/coverage.info` (filtered to `src/*` only — we don't care about Zephyr's own coverage), and renders an HTML browse-able report if `genhtml` is on `PATH` (`brew install lcov`).
+Failures abort the test process with a backtrace pointing at the offending source line. No separate command needed — every `./scripts/run_tests.sh` run is a sanitizer run.
 
-## Sanitizers
+## Tier 6 — coverage
 
-ASan + UBSan are enabled in every test's `CMakeLists.txt`. Failures abort the process with a backtrace pointing at the offending source line. No extra flags needed.
+```sh
+brew install lcov            # if not installed
+./scripts/run_tests.sh       # produces .gcda files alongside .o
+./scripts/run_coverage.sh    # captures, filters to src/*, renders HTML
+open coverage/html/index.html
+```
+
+Filtered to `src/*` only — we don't care about Zephyr or harness coverage in our reports.
 
 ## What's NOT tested here
 
@@ -107,3 +101,13 @@ ASan + UBSan are enabled in every test's `CMakeLists.txt`. Failures abort the pr
 - `main.c` — three function calls in init order; not worth a test.
 
 This split is intentional: the firmware modules with real bugs in their history (`json_io` parser, `control` hysteresis) get exhaustive host-side testing; modules whose correctness can only be verified against silicon get a single end-to-end smoke check on real hardware.
+
+## Linux / CI alternative path
+
+The `tests/integration/persistence/` directory still includes `CMakeLists.txt`, `prj.conf`, and `testcase.yaml` so the same source can be run through Zephyr's twister + ztest on Linux:
+
+```sh
+ZEPHYR_TOOLCHAIN_VARIANT=host west twister -p native_sim --force-toolchain -T tests/integration
+```
+
+The Linux path uses Zephyr's real `settings_nvs` backend on top of the flash simulator (rather than the in-memory shim), so it's a slightly stronger integration check. Useful as a CI sanity net even when local dev runs the host path.
