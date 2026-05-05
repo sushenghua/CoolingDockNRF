@@ -5,6 +5,7 @@
  */
 
 #include <errno.h>
+#include <stddef.h>
 #include "sensor.h"
 #include "control.h"
 #include "ble_svc.h"

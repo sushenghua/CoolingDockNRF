@@ -21,9 +21,12 @@ All tier-1/2 tests are run by Zephyr's [twister](https://docs.zephyrproject.org/
 
 > **macOS — Zephyr's test framework is unavailable.** NCS v3.3.0 hard-blocks `native_sim` (`zephyr/arch/posix/CMakeLists.txt:3` — `FATAL_ERROR` on Darwin) AND the `unit_testing` board fails to compile any `ZTEST(...)` macro because Zephyr's iterable-sections feature uses ELF section attributes that Mach-O rejects. Both walls are inherent to NCS v3.3.
 >
-> The unit tests therefore use a tiny custom harness in `tests/unit/test_harness.{h,c}` (header-only `TEST(name)` + `ASSERT_*` macros, auto-registered via `__attribute__((constructor))`) and compile with `cc` directly. ASan + UBSan + gcov are wired in via `scripts/run_tests.sh`. Same testing power, no Zephyr scaffolding.
+> All three tiers are wired around this:
 >
-> The integration test still requires Zephyr's settings + NVS subsystems — it stays Zephyr-based and is automatically skipped on macOS, run on Linux/CI.
+> - **Unit tests** use a tiny custom harness in `tests/unit/test_harness.{h,c}` (header-only `TEST(name)` + `ASSERT_*` macros, auto-registered via `__attribute__((constructor))`) and compile with `cc` directly.
+> - **Integration test** compiles the real `sys_data` + `cmd_interpreter` + `json_io` production code against thin Zephyr-API shims in `tests/integration/persistence/fakes/` (in-memory settings backend, pthread mutexes, no-op work queue, fixed FICR). Same source code, no Zephyr build needed.
+>
+> ASan + UBSan + gcov are wired in via `scripts/run_tests.sh`. Same testing power on macOS as on Linux.
 >
 > Run on any host:
 >

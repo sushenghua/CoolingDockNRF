@@ -71,33 +71,61 @@ run_unit() {
 run_unit json_io       tests/unit/json_io/src/test_json_io.c        src/json_io.c
 run_unit control_logic tests/unit/control_logic/src/test_control_logic.c src/control_logic.c
 
-# Persistence integration test (Zephyr/native_sim) — Linux/CI only.
-echo
-echo "════════════════════════════════════════════════════════════"
-case "$(uname -s)" in
-	Linux*)
-		echo "  build  integration/persistence  (-b native_sim, --no-sysbuild)"
-		echo "════════════════════════════════════════════════════════════"
-		: "${ZEPHYR_TOOLCHAIN_VARIANT:=host}"
-		export ZEPHYR_TOOLCHAIN_VARIANT
-		west build -p always -b native_sim --no-sysbuild \
-			--build-dir build/test_persistence \
-			tests/integration/persistence
-		echo
-		echo "  run    integration/persistence"
-		echo "────────────────────────────────────────────────────────────"
-		if build/test_persistence/zephyr/zephyr.exe; then
-			echo "  ✅ integration/persistence"
-		else
-			echo "  ❌ integration/persistence"
-			failures+=("integration/persistence")
-		fi
-		ran=$((ran + 1))
-		;;
-	*)
-		echo "  ⏭   integration/persistence — skipped (Zephyr native_sim is Linux-only in NCS v3.3)"
-		;;
-esac
+# Integration test for the cmd → sys_data → settings pipeline.
+# Compiled against shimmed Zephyr APIs in
+# tests/integration/persistence/fakes/ so it builds on macOS too.
+run_integration() {
+	local out_dir="build/test_persistence"
+	rm -rf "$out_dir"; mkdir -p "$out_dir"
+
+	echo
+	echo "════════════════════════════════════════════════════════════"
+	echo "  build  integration/persistence"
+	echo "════════════════════════════════════════════════════════════"
+
+	local fakes_inc="tests/integration/persistence/fakes"
+	local int_flags=(
+		-O0 -g -Wall
+		-Wno-unused-function   # reboot_work_handler is unreachable with our shim
+		-I"$fakes_inc"
+		-Itests/unit
+		-Isrc
+		"-DCONFIG_BT_DEVICE_NAME=\"CoolingDock_NRF52\""
+		"-DCONFIG_BOARD=\"native_test_host\""
+		-fsanitize=address,undefined -fno-sanitize-recover=all
+		--coverage
+	)
+
+	local sources=(
+		tests/integration/persistence/src/test_persistence.c
+		tests/integration/persistence/src/stubs.c
+		tests/integration/persistence/fakes/fakes.c
+		src/sys_data.c
+		src/json_io.c
+		src/cmd_interpreter.c
+		tests/unit/test_harness.c
+	)
+	local objs=()
+	for src in "${sources[@]}"; do
+		local obj="$out_dir/$(basename "$src" .c).o"
+		"$CC" "${int_flags[@]}" -c "$src" -o "$obj"
+		objs+=("$obj")
+	done
+	"$CC" "${int_flags[@]}" -lpthread -o "$out_dir/run_test" "${objs[@]}"
+
+	echo
+	echo "  run    integration/persistence"
+	echo "────────────────────────────────────────────────────────────"
+	if "$out_dir/run_test"; then
+		echo "  ✅ integration/persistence"
+	else
+		echo "  ❌ integration/persistence"
+		failures+=("integration/persistence")
+	fi
+	ran=$((ran + 1))
+}
+
+run_integration
 
 echo
 echo "════════════════════════════════════════════════════════════"
