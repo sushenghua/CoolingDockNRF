@@ -2,11 +2,73 @@
 
 #include <errno.h>
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(sensor, LOG_LEVEL_INF);
+
+/* ============================================================
+ *           SHT3x soft-reset before driver init
+ * ============================================================
+ *
+ * Zephyr's `sht3xd` driver doesn't soft-reset the chip at init —
+ * it just sends START_PERIODIC_MEASUREMENT (or, in single-shot
+ * mode, nothing at all) and considers itself done. If the chip
+ * was left in some other state from the previous boot (different
+ * mode, half-issued command, alert-pending, etc.), the new init
+ * silently runs against stale chip state and reads can fail.
+ *
+ * We sidestep this by issuing the SHT3x's `0x30A2` soft-reset
+ * command at SYS_INIT time, just before the sensor driver runs.
+ * Per the datasheet, the reset takes < 1 ms; we wait 2 ms for
+ * margin. From there the Zephyr driver init always sees a
+ * freshly-reset chip and can pick whatever mode it wants
+ * cleanly.
+ *
+ * Init priority math:
+ *   - I2C driver runs at CONFIG_I2C_INIT_PRIORITY        (50)
+ *   - We run at  POST_KERNEL                              (80)  <- here
+ *   - sht3xd driver runs at CONFIG_SENSOR_INIT_PRIORITY  (90)
+ *
+ * If the SHT3x is unreachable (not wired, wrong address), the
+ * I2C write fails and we log a warning but don't fail init —
+ * the firmware should still boot so the user can flash a fix.
+ */
+
+#define SHT3X_CMD_SOFT_RESET_HI  0x30
+#define SHT3X_CMD_SOFT_RESET_LO  0xA2
+
+static int sht3x_soft_reset_init(void)
+{
+	const struct device *i2c =
+		DEVICE_DT_GET(DT_BUS(DT_ALIAS(sht3x)));
+	const uint16_t addr = DT_REG_ADDR(DT_ALIAS(sht3x));
+
+	if (!device_is_ready(i2c)) {
+		LOG_WRN("I2C bus not ready, skipping SHT3x soft-reset");
+		return 0;
+	}
+
+	const uint8_t cmd[2] = { SHT3X_CMD_SOFT_RESET_HI, SHT3X_CMD_SOFT_RESET_LO };
+	int rc = i2c_write(i2c, cmd, sizeof(cmd), addr);
+	if (rc != 0) {
+		/* Common case: sensor not wired. The sensor thread will
+		 * detect this later via device_is_ready() and log clearly. */
+		LOG_DBG("SHT3x soft-reset write at 0x%02x: %d (chip absent?)",
+			addr, rc);
+		return 0;
+	}
+
+	/* Datasheet: soft-reset completes in < 1 ms. */
+	k_msleep(2);
+	LOG_INF("SHT3x soft-reset issued at 0x%02x", addr);
+	return 0;
+}
+
+SYS_INIT(sht3x_soft_reset_init, POST_KERNEL, 80);
 
 #define SENSOR_STACK_SIZE  1024
 #define SENSOR_PRIORITY    5

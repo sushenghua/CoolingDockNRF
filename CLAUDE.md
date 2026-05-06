@@ -93,6 +93,24 @@ Implementation pieces in `ble_svc.c`:
 
 **Soft-brick recovery**: if the device boots fresh with no bond and no client pairs within 120 s, advertising stops (FAL is empty). Hold BUTTON3 for 5 s to reopen the window. If the button is unavailable (e.g., overlay alias missing), only a chip-erase + reflash recovers — `west flash --erase` does both.
 
+### SHT3x driver mode + soft-reset wrapper (`sensor.c`)
+
+Two interrelated SHT3x quirks specific to NCS v3.3 / Zephyr 4.x's `sht3xd` driver:
+
+1. **Driver default measurement mode.** Zephyr defaults to **periodic** mode at MPS=1 (one measurement per second). Each `sensor_sample_fetch` issues `FETCH_DATA` (0xE000) and reads 6 bytes from the chip's measurement register. Per the SHT3x datasheet, *if no measurement is ready when the read header is sent, the chip NACKs the read* — Zephyr surfaces that NACK as `-EIO` (`-5`). With our 500 ms sample period vs the chip's 1 Hz measurement rate, this would naively give ~50 % failure; in practice we hit 100 % because the periodic-mode init is fragile (see below). **Fix**: `CONFIG_SHT3XD_SINGLE_SHOT_MODE=y` in `prj.conf`. Each sample becomes a self-contained `cmd → wait 15 ms → read` cycle with no persistent chip state to break — the same pattern ESP-IDF's reference SHT3x driver uses by default.
+
+2. **Driver init doesn't soft-reset the chip.** The Zephyr driver sends `START_PERIODIC_MEASUREMENT` (or nothing for single-shot) and reports init success without confirming the chip's state. If the chip carried over state from a previous boot (different mode, half-issued command, alert-pending) the new "init" runs against stale chip state. **Fix**: `sensor.c` registers a `SYS_INIT` at `POST_KERNEL` priority 80 that issues the `0x30A2` soft-reset over I2C and waits 2 ms before the Zephyr `sht3xd` driver init runs (priority 90). Cost: one extra I2C write at boot. Benefit: the chip is always in a known state regardless of which mode the driver picks. If the chip is unreachable (wrong address, not wired), the soft-reset write fails silently and init proceeds — the sensor thread will surface the issue clearly when it later finds `device_is_ready()` returning false.
+
+**Diagnosing a future SHT3x failure** — symptoms map to causes:
+
+| Symptom | Likely cause |
+|---|---|
+| `<err> sensor: SHT3x not ready` at boot | Chip absent, address wrong, or `device_is_ready` failing — wiring problem |
+| Boot OK but `<wrn> sensor: sht3x read failed: -5` repeatedly | Driver running against bad chip state OR mode mismatch — try toggling `CONFIG_SHT3XD_SINGLE_SHOT_MODE` |
+| Soft-reset wrapper logs `chip absent?` at boot | The address in the overlay (`reg = <0x44>` or `<0x45>`) doesn't match the wired ADDR-pin level (low → 0x44, high → 0x45) |
+
+It is **not** a hardware/pull-up problem. The nRF52 SoC's internal weak pull-ups are sufficient for this physical setup, same as on ESP32. Don't add external resistors before exhausting software-side hypotheses.
+
 ### Apple Core Bluetooth + EATT compatibility (macOS Sonoma+ / iOS 17+)
 
 When the peer is a modern Apple device, Core Bluetooth tries to route **Write-Without-Response** through an Enhanced ATT (EATT) bearer on a dynamically-allocated L2CAP channel (e.g. CID 0x003a). NCS v3.3.0's Zephyr (4.3.99) cannot complete the EATT bearer setup against Apple's request — the L2CAP Credit-Connection negotiation hangs in a state where Apple thinks it has the bearer and starts sending data, but our host has no handler bound. Symptoms in the firmware log:
