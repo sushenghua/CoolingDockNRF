@@ -93,6 +93,25 @@ Implementation pieces in `ble_svc.c`:
 
 **Soft-brick recovery**: if the device boots fresh with no bond and no client pairs within 120 s, advertising stops (FAL is empty). Hold BUTTON3 for 5 s to reopen the window. If the button is unavailable (e.g., overlay alias missing), only a chip-erase + reflash recovers — `west flash --erase` does both.
 
+### Apple Core Bluetooth + EATT compatibility (macOS Sonoma+ / iOS 17+)
+
+When the peer is a modern Apple device, Core Bluetooth tries to route **Write-Without-Response** through an Enhanced ATT (EATT) bearer on a dynamically-allocated L2CAP channel (e.g. CID 0x003a). NCS v3.3.0's Zephyr (4.3.99) cannot complete the EATT bearer setup against Apple's request — the L2CAP Credit-Connection negotiation hangs in a state where Apple thinks it has the bearer and starts sending data, but our host has no handler bound. Symptoms in the firmware log:
+
+```
+<wrn> bt_att: No ATT channel for MTU 140
+<wrn> bt_l2cap: Ignoring data for unknown channel ID 0x003a
+```
+
+Adding `CONFIG_BT_EATT=y` (plus the usual EATT companions: `CONFIG_BT_GATT_CLIENT`, `CONFIG_BT_L2CAP_DYNAMIC_CHANNEL`, `CONFIG_BT_GATT_AUTO_UPDATE_MTU`, larger `CONFIG_BT_BUF_ACL_RX_COUNT_EXTRA`, `CONFIG_BT_ATT_TX_COUNT`) does NOT fix this in NCS v3.3 — the negotiation still fails.
+
+**Workaround**: use **Write WITH Response** (ATT Write Request, CID 0x0004 — the legacy ATT bearer). Apple routes that through the legacy channel regardless of EATT state. Reads, notifications, and writes-with-response all work fine.
+
+This affects:
+- `tests/hil/smoke.py` — uses `response=True` (already applied)
+- The React frontend (`react_projects/CoolingDock`) — `@capacitor-community/bluetooth-le` defaults to write-without-response. To make the iOS/macOS app work, change frontend BLE writes to `writeWithResponse: true` in the plugin call.
+
+The issue does NOT affect Android phones (Android's Bluedroid stack doesn't aggressively use EATT in the same way).
+
 ### Status / DevInfo / PrpConf JSON shapes
 
 Status (every 500 ms):

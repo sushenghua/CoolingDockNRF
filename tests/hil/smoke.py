@@ -166,7 +166,15 @@ async def run(prefix: str) -> None:
         while not statuses.empty():
             statuses.get_nowait()
 
-        await client.write_gatt_char(CMD_UUID, cmd, response=False)
+        # Use Write WITH Response (ATT Write Request, CID 0x0004) rather
+        # than Write Without Response. On macOS Sonoma+ / iOS 17+ Apple's
+        # Core Bluetooth routes Write-Without-Response through an EATT
+        # bearer (CID in the dynamic range, e.g. 0x003a), and our NCS
+        # v3.3.0 firmware can't complete the EATT bearer setup — the data
+        # arrives on a CID with no handler and is dropped by L2CAP. Write
+        # WITH Response always uses the legacy ATT bearer, which works.
+        # Same applies to the React frontend's BLE plugin on macOS/iOS.
+        await client.write_gatt_char(CMD_UUID, cmd, response=True)
 
         # --- Wait for UpdateRet on the status channel ---
         deadline = asyncio.get_event_loop().time() + CMD_RESPONSE_TIMEOUT
