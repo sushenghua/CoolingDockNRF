@@ -39,7 +39,7 @@ static void sensor_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
 
 	if (!device_is_ready(sht)) {
-		LOG_ERR("SHT3x not ready - check I2C wiring (P0.26/P0.27, addr 0x44)");
+		LOG_ERR("SHT3x not ready - check I2C wiring (P0.26/P0.27) and addr (overlay reg)");
 		return;
 	}
 	LOG_INF("sensor thread up on %s", sht->name);

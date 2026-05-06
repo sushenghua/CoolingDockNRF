@@ -38,11 +38,16 @@
 
 &i2c0 {
 	status = "okay";
+	/* nRF52 TWI peripheral only accepts 100 kHz / 250 kHz / 400 kHz
+	 * (any other value triggers a build-time BUILD_ASSERT). Stick
+	 * with standard 100 kHz; if the bus is marginal because of weak
+	 * pull-ups, the fix is to add physical 4.7 kΩ resistors to
+	 * VDD on SDA + SCL — slowing the clock isn't an option here. */
 	clock-frequency = <I2C_BITRATE_STANDARD>;
 
-	sht3x: sht3xd@44 {
+	sht3x: sht3xd@45 {
 		compatible = "sensirion,sht3xd";
-		reg = <0x44>;
+		reg = <0x45>;     /* SHT3x ADDR pin tied to VDD. Tie ADDR to GND for 0x44. */
 	};
 };
 

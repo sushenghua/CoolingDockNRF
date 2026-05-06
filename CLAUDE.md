@@ -28,7 +28,7 @@ Single-test rebuild without pristine: drop `-p always`. Clean: `rm -rf build`.
 | Function          | nRF Pin | Header     | Notes                  |
 |-------------------|---------|------------|------------------------|
 | SHT3x SCL         | P0.27   | Arduino A5 | I2C0, 100 kHz          |
-| SHT3x SDA         | P0.26   | Arduino A4 | addr 0x44              |
+| SHT3x SDA         | P0.26   | Arduino A4 | addr 0x45 (ADDR pin high; tie ADDR to GND for 0x44) |
 | Fan PWM           | P0.13   | Arduino D2 | `&pwm0` ch0 @ 22 kHz   |
 | Fan power gate    | P0.14   | Arduino D3 | active-high GPIO out   |
 

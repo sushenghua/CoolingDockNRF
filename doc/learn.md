@@ -86,12 +86,12 @@ Grouped by purpose:
 Devicetree overlay that customizes the board for *this* application without forking the upstream board file. It does four things:
 
 1. **Disables the board's `button0` and `button1` nodes** — they live on P0.13 and P0.14, which we're reusing as fan PWM and fan-power-gate. Without this, a future Kconfig flip that enables `gpio-keys` would race us for the pins at boot.
-2. **Enables `&i2c0`** (it's `disabled` by default on the nRF52 DK board) and adds an `sht3xd@44` child node — that child is what makes the SHT3x driver auto-instantiate.
+2. **Enables `&i2c0`** (it's `disabled` by default on the nRF52 DK board) and adds an `sht3xd@45` child node — that child is what makes the SHT3x driver auto-instantiate.
 3. **Enables `&pwm0`** and binds it to a pinctrl group routing channel 0 to `P0.13`. PWM frequency (22 kHz) is encoded in the `pwms = <…>` cell of the consumer node, not the controller.
 4. **Adds three consumer nodes / aliases**:
    - `fan-pwm` → a `pwm-leds` child binding into `&pwm0` ch0
    - `fan-power` → a `gpio-leds` child driving `&gpio0 14`
-   - `sht3x` → the `sht3xd@44` node above
+   - `sht3x` → the `sht3xd@45` node above
    - `pairing-btn` → `&button2` (P0.15, BUTTON3 on the DK silkscreen) — used by the pairing-window button described in §4
 
 The application code never references P0.13 / P0.26 / etc. directly — it asks for `DT_ALIAS(...)` and lets the build system resolve.
