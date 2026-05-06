@@ -19,7 +19,7 @@ target_include_directories(app PRIVATE
 # symbol only exists with CONFIG_BT=y. We inject it directly so tests
 # don't need to drag the BT subsystem in.
 target_compile_definitions(app PRIVATE
-	CONFIG_BT_DEVICE_NAME=\"CoolingDock_NRF52\"
+	CONFIG_BT_DEVICE_NAME=\"CoolingDockNRF\"
 )
 
 # Sanitizers + coverage. ASan needs more main stack on native_sim, see prj.conf.

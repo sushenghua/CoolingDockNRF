@@ -3,7 +3,7 @@
 
 Walks the wire-contract checklist against a real flashed nRF52 DK:
 
-  1. Scan for a peer whose advertised name starts with "CoolingDock"
+  1. Scan for a peer whose advertised name starts with "CoolingDockNRF"
   2. Connect; the OS triggers just-works pairing on first encrypted read
   3. Read DevInfo and PrpConf characteristics, validate JSON structure
   4. Subscribe to Status notifications; assert one arrives within 2 s
@@ -16,8 +16,13 @@ Run:
   pip install -r requirements.txt
   python smoke.py [device-name-prefix]
 
-Default name prefix is "CoolingDock". Exits 0 on success, non-zero on
-any failure with a clear message identifying which step failed.
+Default name prefix is "CoolingDockNRF". The more-specific prefix
+disambiguates from the ESP32-based CoolingDock chip which advertises
+as "CoolingDock_..." — without this, smoke.py could connect to the
+wrong board if both are powered on.
+
+Exits 0 on success, non-zero on any failure with a clear message
+identifying which step failed.
 """
 
 import asyncio
@@ -37,7 +42,7 @@ CMD_UUID     = "33333333-2222-2222-1111-111100000002"
 DEVINFO_UUID = "33333333-2222-2222-1111-111100000004"
 PRPCONF_UUID = "33333333-2222-2222-1111-111100000005"
 
-NAME_PREFIX = "CoolingDock"
+NAME_PREFIX = "CoolingDockNRF"
 SCAN_TIMEOUT_S       = 10.0
 CMD_RESPONSE_TIMEOUT = 5.0
 STATUS_TIMEOUT_S     = 3.0

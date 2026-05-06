@@ -91,11 +91,11 @@ TEST(jsf_devinfo_all_fields_present)
 {
 	char buf[256];
 	ssize_t n = jsf_devinfo(buf, sizeof(buf),
-				"CoolingDock_NRF52", "0.1.0",
+				"CoolingDockNRF", "0.1.0",
 				"deadbeefcafebabe", "nrf52dk_nrf52832");
 	ASSERT_TRUE(n > 0);
 	ASSERT_NOT_NULL(strstr(buf, "\"cmd\":\"GetDeviceInfo\""));
-	ASSERT_NOT_NULL(strstr(buf, "\"name\":\"CoolingDock_NRF52\""));
+	ASSERT_NOT_NULL(strstr(buf, "\"name\":\"CoolingDockNRF\""));
 	ASSERT_NOT_NULL(strstr(buf, "\"fw\":\"0.1.0\""));
 	ASSERT_NOT_NULL(strstr(buf, "\"uid\":\"deadbeefcafebabe\""));
 	ASSERT_NOT_NULL(strstr(buf, "\"board\":\"nrf52dk_nrf52832\""));

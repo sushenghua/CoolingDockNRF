@@ -90,7 +90,7 @@ run_integration() {
 		-I"$fakes_inc"
 		-Itests/unit
 		-Isrc
-		"-DCONFIG_BT_DEVICE_NAME=\"CoolingDock_NRF52\""
+		"-DCONFIG_BT_DEVICE_NAME=\"CoolingDockNRF\""
 		"-DCONFIG_BOARD=\"native_test_host\""
 		-fsanitize=address,undefined -fno-sanitize-recover=all
 		--coverage

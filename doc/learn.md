@@ -111,7 +111,7 @@ static struct {
     bool            master;        // master power switch
     char            name[24];      // device name
     struct prf_cfg  prf[1];        // peripheral config (just the fan)
-} state = { .master = true, .name = "CoolingDock_NRF52", .prf = { ... defaults ... } };
+} state = { .master = true, .name = "CoolingDockNRF", .prf = { ... defaults ... } };
 ```
 
 `struct prf_cfg` holds every per-mode field the frontend can send: `mode`, `pwr` (power mode), `thr1_c`/`thr2_c` (sensor mode), `pwm_pct` (fixed/cycle), `con_sec`/`coff_sec` (cycle), `ont_sec`/`offt_sec` (schedule). Even fields irrelevant to the active mode are persisted, so switching modes via the app preserves the previously-set values.
@@ -393,7 +393,7 @@ Status (every 500 ms):
 
 DeviceInfo (read on connect):
 ```json
-{"cmd":"GetDeviceInfo","name":"CoolingDock_NRF52","fw":"0.1.0",
+{"cmd":"GetDeviceInfo","name":"CoolingDockNRF","fw":"0.1.0",
  "uid":"<16 hex from NRF_FICR DEVICEID>","board":"nrf52dk_nrf52832"}
 ```
 
@@ -428,7 +428,7 @@ What actually happens from reset:
 4. **Scheduler starts.** All ready threads (the system workqueue, idle, eventually `main`) enter the run queue. Our application threads don't exist yet — they're created from `main`.
 5. **`main` runs**, executing the 7-step init sequence above. Each `*_start()` call spawns a thread that's immediately runnable.
 6. **`bt_enable()`** synchronously brings up the Bluetooth host, spawns BT RX/TX worker threads, loads bonds from settings.
-7. **`ble_svc_start()`** registers `auth_info_cb`, configures BUTTON3, syncs the host's name from `sys_data`, sets `adv_mode = OPEN`, schedules the 120 s timer, posts the first `adv_kick_work` to start advertising. Phone scans, finds `CoolingDock_NRF52`, connects, OS triggers just-works pairing transparent to the React app.
+7. **`ble_svc_start()`** registers `auth_info_cb`, configures BUTTON3, syncs the host's name from `sys_data`, sets `adv_mode = OPEN`, schedules the 120 s timer, posts the first `adv_kick_work` to start advertising. Phone scans, finds `CoolingDockNRF`, connects, OS triggers just-works pairing transparent to the React app.
 8. **Steady state**: sensor samples every 500 ms, control loop reapplies every 1 s, ble_notify pushes status every 500 ms when subscribed, ble_cmd sleeps on `cmd_q` until the user taps something in the app.
 
 ---

@@ -67,7 +67,7 @@ Five application threads dynamically spawned from `main()` (Style B — explicit
   - `…0004` Device Info — READ
   - `…0005` Peripheral Sets — READ
 - **No `…0003` characteristic.** The frontend never subscribes to it; UpdateRet replies are sent over the STATUS notify channel and demuxed client-side by the `cmd` field.
-- Device name must start with `CoolingDock` (frontend filters scan by name prefix).
+- Device name is `CoolingDockNRF`. Starts with `CoolingDock` so it still satisfies the React frontend's name-prefix scan filter, but the `NRF` suffix disambiguates from the original ESP32-based CoolingDock board if both are powered on simultaneously. The HIL smoke test (`tests/hil/smoke.py`) scans for the more specific `CoolingDockNRF` prefix to avoid accidentally connecting to the ESP32 unit.
 - MTU enlarged to 247 (`CONFIG_BT_L2CAP_TX_MTU`) so 200-byte frontend chunks fit in single L2CAP frames.
 - LE Secure Connections, just-works, bondable. Bond stored via `CONFIG_BT_SETTINGS=y`. The frontend never calls a pair API; the OS BLE stack triggers pairing automatically on first encrypted read.
 
@@ -122,7 +122,7 @@ Status (every 500 ms):
 
 DeviceInfo (read on connect):
 ```json
-{"cmd":"GetDeviceInfo","name":"CoolingDock_NRF52","fw":"0.1.0",
+{"cmd":"GetDeviceInfo","name":"CoolingDockNRF","fw":"0.1.0",
  "uid":"<16 hex from NRF_FICR DEVICEID>","board":"nrf52dk_nrf52832"}
 ```
 

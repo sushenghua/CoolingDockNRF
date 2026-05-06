@@ -346,7 +346,7 @@ It's the simplest tier of HIL: **scripted host-side automation talking to a real
                  BLE radio (real RF)
   ┌─────────────────────────┐    ┌──────────────────────────┐
   │  macOS / Linux laptop   │ ◄──│  nRF52 DK + flashed FW   │
-  │  python tests/hil/      │    │  CoolingDock_NRF52       │
+  │  python tests/hil/      │    │  CoolingDockNRF       │
   │    smoke.py             │    │  advertising             │
   │  (bleak)                │ ──►│                          │
   └─────────────────────────┘    └──────────────────────────┘
