@@ -366,45 +366,102 @@ Total:                                          ≈ 1450 µA = 1.45 mA  ✓
 
 **Diagnosis:** The radio cost is normal. **The baseline is wrong**. For a properly power-managed nRF52, the baseline between events should be ~5–20 µA, not 1–2 mA. The chip is staying in System ON Active mode between adv events instead of dropping into a deeper sleep state.
 
-### Root cause — `CONFIG_PM=y` not in `prj.conf`
+### Initial hypothesis — `CONFIG_PM=y` not in `prj.conf` — turned out to be wrong
 
-Zephyr's automatic CPU sleep needs the Power Management subsystem (`CONFIG_PM=y`). Without it, the kernel idle thread executes a basic `WFI` that only stops the CPU clock — peripheral clocks and most of the SoC stay on, drawing ~1–3 mA continuously. With `CONFIG_PM=y`, the idle thread coordinates with the SoC's PM peripheral to enter System ON Idle / Constant Latency / Low Power, dropping current to single µA.
+Zephyr's CPU sleep needs the Power Management subsystem. Without `CONFIG_PM=y`, the kernel idle thread does a basic `WFI` that only stops the CPU clock; peripheral clocks stay on. So the obvious first hypothesis was "PM is off, that's why idle is 1.45 mA". We added it.
 
-**Verify the current state:**
+**Result**: 1.45 mA → 1.44 mA. **No measurable change.**
+
+This was a useful negative: PM *was* working, the kernel idle thread *was* sleeping the CPU, but a peripheral was holding the SoC out of deep sleep states.
+
+### Real cause — the UART driver
+
+The actual culprit was the **UART peripheral**. `CONFIG_SERIAL=y` is the default; the driver initializes the UART at boot for the J-Link VCOM and holds it in a state that prevents the SoC from entering its deepest sleep modes — even with no log activity. Disabling just the log *backend* (`CONFIG_LOG_BACKEND_UART=n`) wasn't enough; the driver itself had to be removed.
+
+```
+CONFIG_SERIAL=n
+CONFIG_UART_CONSOLE=n
+CONFIG_LOG_BACKEND_UART=n
+CONFIG_BOOT_BANNER=n
+```
+
+**Result**: 1.44 mA → **377 µA**. **74 % reduction.**
+
+That's the single largest power optimization available without changing application logic — and most BLE Zephyr power-profiling guides hit this same wall. The fact that PM didn't move the needle but `SERIAL=n` did was the diagnostic key: it pointed at "a peripheral keeping the SoC awake," not "the CPU not sleeping."
+
+### Final measured numbers on this firmware
+
+Advertising-only mode, no peer connected, on PCA10040 with PPK2 in Ampere mode at P22:
+
+| Configuration | Average | vs default | Notes |
+|---|---|---|---|
+| `prj.conf` default | 1.45 mA | baseline | UART driver + log backend on, no PM |
+| `+ CONFIG_PM=y + CONFIG_PM_DEVICE=y` | 1.44 mA | −0.7 % | Negligible — PM was correct but UART blocked deep sleep |
+| `+ CONFIG_SERIAL=n` (and friends) | **377 µA** | **−74 %** | UART driver out, SoC can finally enter deep sleep |
+
+Battery-life implications on a 240 mAh CR2477 cell:
+- Original 1.45 mA → ~7 days
+- Current 377 µA → ~1 month
+- Hypothetical 80 µA (further optimizations) → ~4 months
+
+### Why baseline isn't lower than 377 µA
+
+Decomposition of the 377 µA:
+
+```
+BLE adv events: ~10 mA × ~0.5 ms × 25 events/s ≈   125 µA   (~33%)
+Everything else (background):                   ≈   252 µA   (~67%)
+                                                ───────────
+Total:                                           377 µA
+```
+
+The 252 µA background is approximately:
+- HFXO calibration cycles
+- PWM peripheral kept active even at 0 % duty (~50 µA)
+- I2C peripheral idle currents
+- Zephyr kernel tick/timer interrupt overhead
+- BLE controller's own bookkeeping
+
+Further optimizations available if needed:
+
+1. **Slower advertising interval.** Currently `BT_LE_ADV_CONN_FAST_1` (30–60 ms). Switching to `BT_LE_ADV_CONN_SLOW` (1000–1500 ms) cuts radio events ~30× — saves ~120 µA.
+2. **Disable PWM when fan is off.** Even at 0 % duty the peripheral is running. Gating it saves ~50 µA.
+3. **Slower sensor sample rate.** 500 ms → 5 s saves a few µA.
+4. **Slower status notify period.** 500 ms → 5 s saves a few µA per connected event.
+
+For a wall-powered fan controller, **377 µA is more than fine**. For a future battery-powered variant, the four levers above could plausibly land in the 50–100 µA range without much application-code change.
+
+### How to use power_profile.conf
+
+The power-only Kconfigs live in `power_profile.conf` at the project root, separate from `prj.conf`. This keeps everyday builds with the boot log + serial intact, and lets power-profile builds drop them when needed.
+
+**Everyday development build** (with logs on the J-Link VCOM):
 
 ```sh
-grep -E "^CONFIG_PM" build/nrf52dk/zephyr/.config
+west build -b nrf52dk/nrf52832 -p always .
+west flash
 ```
 
-**If not enabled, add to `prj.conf`:**
+**Power-profile build** (silent serial, lower baseline):
 
-```
-# Power management — let the kernel put the SoC into deep sleep
-# between events. Without this, idle current is ~1.5 mA; with it,
-# ~5 µA. Massive impact on battery-powered use cases.
-CONFIG_PM=y
-CONFIG_PM_DEVICE=y
+```sh
+west build -b nrf52dk/nrf52832 -p always . -- -DEXTRA_CONF_FILE=power_profile.conf
+west flash
 ```
 
-Rebuild + reflash, re-capture. Expected change:
+The `-DEXTRA_CONF_FILE` argument layers the file on top of `prj.conf` — same as Zephyr's standard overlay mechanism for additional config fragments. Reverting to a normal build is just a matter of dropping the `-- -D…` argument.
 
-| Metric | Before `CONFIG_PM=y` | After |
-|---|---|---|
-| Average current (advertising only) | 1.45 mA | **80–150 µA** |
-| Peak (radio TX) | 11 mA | 11 mA (unchanged) |
-| Baseline between events | 1–2 mA | **5–20 µA** |
-| Battery life on a 240 mAh CR2477 | ~7 days | **~3 months** |
+### Diagnostic flow if you see "high idle current" in the future
 
-Save both captures as CSV via `File → Save data`. Naming convention: `before_pm.csv`, `after_pm.csv`. Quote the numbers in the commit message.
+1. **Capture the chart**, note the average and the baseline-vs-event ratio.
+2. **If the baseline (between events) is mA-scale** → it's a peripheral, not CPU activity. Check:
+   - UART (`CONFIG_SERIAL=n`)
+   - PWM running with 0 % duty (gate the driver)
+   - I2C / SPI / other peripherals held active
+3. **If the baseline is µA-scale but events are dense** → it's the radio. Check adv/connection interval.
+4. **If both are low** → you're done.
 
-### Other contributors to "high baseline"
-
-If `CONFIG_PM=y` is already on and baseline is still elevated:
-
-- **`CONFIG_SERIAL=y` + UART log backend** — keeps UART peripheral active continuously, ~500 µA. Test by setting `CONFIG_LOG_BACKEND_UART=n` temporarily.
-- **PWM peripheral always-on** — even at 0 % duty, ~50 µA. Negligible but real.
-- **A thread polling without `k_msleep`** — CPU never goes idle. Audit thread loops for `while (1) { check(); }` patterns.
-- **Sensor driver in periodic-trigger mode** — keeps the SoC's GPIO interrupt latched. Single-shot mode (already on for SHT3x) avoids this.
+The non-obvious lesson from this project: **CPU PM (`CONFIG_PM=y`) is necessary but not sufficient.** A single peripheral with `*_INIT_PRIORITY` running and clocks held active will dominate over CPU-idle savings. Always profile `SERIAL=n` first when chasing baseline current.
 
 ---
 
