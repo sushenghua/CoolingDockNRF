@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Zephyr/NCS firmware on the Nordic nRF52832 DK that re-implements the local-control feature set of the ESP32-C3 **CoolingDock** product (`/Users/shenghua/Projects/esp32_projects/CoolingDock`) and is **wire-compatible with its Capacitor/React frontend** (`/Users/shenghua/Projects/react_projects/CoolingDock`). Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port; only BLE control + local sensor + fan loop are implemented.
+Zephyr/NCS firmware on the Nordic nRF52832 DK that re-implements the local-control feature set of the original **CoolingDock** product (ESP32-C3, ESP-IDF) and is **wire-compatible with its Capacitor/React frontend** — same UUIDs, JSON shapes, and MTU, so the existing app runs against this firmware unmodified. Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port; only BLE control + local sensor + fan loop are implemented.
 
 ## Environment
 - nRF Connect SDK installed by VS Code extension at `/opt/nordic/ncs`
