@@ -4,12 +4,14 @@ Zephyr / nRF Connect SDK firmware for the **Nordic nRF52832 DK** that re-impleme
 
 Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port. Only BLE control + local sensor sampling + fan PWM are implemented.
 
+[![Bench setup: nRF52 DK + SHT3x + PPK2 + oscilloscope](doc/assets/nrf_board_ppk2_oscope.jpg)](doc/assets/nrf_board_ppk2_oscope.jpg)
+
 ## What this repo demonstrates
 
 - **Zephyr / nRF Connect SDK port of an ESP32 product** — kernel API, devicetree, Kconfig, west, with explicit init ordering across `bt_enable`, the settings subsystem, and the I2C driver.
 - **BLE peripheral** — LE Secure Connections, encrypted GATT characteristics, persistent bonds via Zephyr settings / NVS, and a pairing-window state machine (120 s open ↔ bonded-only via Filter Accept List, with a button-held-5 s recovery from soft-brick).
 - **Multi-tier test pyramid** — host-based unit tests, integration tests with kernel / NVS / `nrfx` fakes, and a Python hardware-in-loop smoke test.
-- **Power profiling with the Nordic PPK2** — diagnostic walkthrough in [`doc/ppk2_profile.md`](doc/ppk2_profile.md). Baseline idle current dropped 1.45 mA → 377 µA (−74 %) after identifying the UART driver as the dominant idle-current source.
+- **Power profiling with the Nordic PPK2** — diagnostic walkthrough in [`doc/ppk2_profile.md`](doc/ppk2_profile.md). Baseline idle current dropped from 1.45 mA to 290–570 µA depending on BLE state (≈ −74 % at the typical post-pairing State 3 reading of 381 µA), after identifying the UART driver as the dominant idle-current source.
 
 ## Quick start
 
@@ -72,7 +74,7 @@ See [`tests/README.md`](tests/README.md) for the rationale behind each tier and 
 - [`CLAUDE.md`](CLAUDE.md) — full project architecture, build / flash commands, BLE wire contract, pairing-window state machine, bring-up notes
 - [`doc/learn.md`](doc/learn.md) — codebase walkthrough across six layers (big picture → build → modules → BLE protocol → boot → end-to-end flow)
 - [`doc/learn_test.md`](doc/learn_test.md) — testing concepts (Unity vs Twister, smoke tests, HIL)
-- [`doc/ppk2_profile.md`](doc/ppk2_profile.md) — Power Profiler Kit II setup and the diagnostic loop that landed the 74 % baseline-current reduction
+- [`doc/ppk2_profile.md`](doc/ppk2_profile.md) — Power Profiler Kit II setup and the diagnostic loop that landed the ≈ 74 % baseline-current reduction, plus measured per-state averages with screenshots
 
 ## Hardware
 
@@ -80,6 +82,25 @@ See [`tests/README.md`](tests/README.md) for the rationale behind each tier and 
 - **SHT3x** temperature / humidity sensor on Arduino A4/A5 (I2C0)
 - PWM fan + separate GPIO power gate on Arduino D2/D3
 - (Optional) **Nordic PPK2** — Power Profiler Kit II — for current measurements, wired in Ampere mode at the DK's P22 header (SB9 cut)
+
+### Setup gallery
+
+PPK2 inserted in series at P22 for current measurement (Ampere mode), with the SHT3x sensor on the I2C header:
+
+[![nRF52 DK + PPK2](doc/assets/nrf_board_ppk2.jpg)](doc/assets/nrf_board_ppk2.jpg)
+
+Adding an oscilloscope tap so PWM transitions and BLE radio bursts can be correlated with the PPK2 current trace:
+
+[![nRF52 DK + PPK2 + scope](doc/assets/nrf_board_ppk2_oscope.jpg)](doc/assets/nrf_board_ppk2_oscope.jpg)
+
+Short clip of a live capture session (the PPK2 chart updates as the BLE state machine transitions; the scope shows the I2C / PWM activity in parallel) — click play to stream:
+
+<video controls preload="none" width="800" poster="doc/assets/nrf_board_ppk2_oscope.jpg">
+  <source src="doc/assets/nrf_board_ppk2_oscope.mp4" type="video/mp4">
+  Your browser does not support inline video. <a href="doc/assets/nrf_board_ppk2_oscope.mp4">Download the video</a> instead.
+</video>
+
+The video and screenshots are tracked via Git LFS — see [`.gitattributes`](.gitattributes). If the video doesn't play on a deployed GitHub Pages site, verify the deploy workflow checks out LFS (`actions/checkout@v4` with `lfs: true`).
 
 ## License
 
