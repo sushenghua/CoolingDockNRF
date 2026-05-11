@@ -431,10 +431,10 @@ The "average current" of this firmware isn't a single number — it depends on w
 
 | State | **Measured avg** | Adv interval | Capture | When the device is here |
 |---|---|---|---|---|
-| **State 1 — Connected + notifying** | **362 µA** | n/a (connected) | [![state-1](./assets/state-1-connected-362uA.png)](./assets/state-1-connected-362uA.png) | A peer subscribed, status frames every 500 ms |
-| **State 2 — Advertising OPEN** (`FAST_1`) | **570 µA** | 30–60 ms | [![state-2](./assets/state-2-open-adv-570uA.png)](./assets/state-2-open-adv-570uA.png) | First 120 s after boot, no peer connected |
-| **State 3 — Advertising BONDED_ONLY** (`FAST_2`) | **381 µA** | 100–150 ms | [![state-3](./assets/state-3-bonded-adv-381uA.png)](./assets/state-3-bonded-adv-381uA.png) | After successful pairing OR after 120 s window expired with a bond in the FAL |
-| **State 4 — Quiet** (BONDED_ONLY, FAL empty) | **290 µA** | not advertising | [![state-4](./assets/state-4-quiet-290uA.png)](./assets/state-4-quiet-290uA.png) | After 120 s with no pairing AND no existing bond — soft-bricked, hold BUTTON3 to recover |
+| **State 1 — Connected + notifying** | **362 µA** | n/a (connected) | <a href="./assets/state-1-connected-362uA.png"><img alt="state-1" src="./assets/state-1-connected-362uA.png" width="200"></a> | A peer subscribed, status frames every 500 ms |
+| **State 2 — Advertising OPEN** (`FAST_1`) | **570 µA** | 30–60 ms | <a href="./assets/state-2-open-adv-570uA.png"><img alt="state-2" src="./assets/state-2-open-adv-570uA.png" width="200"></a> | First 120 s after boot, no peer connected |
+| **State 3 — Advertising BONDED_ONLY** (`FAST_2`) | **381 µA** | 100–150 ms | <a href="./assets/state-3-bonded-adv-381uA.png"><img alt="state-3" src="./assets/state-3-bonded-adv-381uA.png" width="200"></a> | After successful pairing OR after 120 s window expired with a bond in the FAL |
+| **State 4 — Quiet** (BONDED_ONLY, FAL empty) | **290 µA** | not advertising | <a href="./assets/state-4-quiet-290uA.png"><img alt="state-4" src="./assets/state-4-quiet-290uA.png" width="200"></a> | After 120 s with no pairing AND no existing bond — soft-bricked, hold BUTTON3 to recover |
 
 #### Counter-intuitive finding: connected is cheaper than open advertising
 
@@ -475,27 +475,27 @@ Two transitions are documented from real captures:
 
 **State 2 → State 4 transition** — fresh `west flash --erase`, no bond on either side, leave alone 3 minutes. At the 120-s mark the OPEN pairing window expires; with an empty FAL the firmware stops advertising entirely. Average steps down from ~570 µA → ~290 µA. The post-transition right half of the chart is essentially flat — no radio events at all.
 
-[![state-transition-2-to-4](./assets/state-transition-2-to-4.png)](./assets/state-transition-2-to-4.png)
+<a href="./assets/state-transition-2-to-4.png"><img alt="state-transition-2-to-4" src="./assets/state-transition-2-to-4.png" width="600"></a>
 
 **State 1 → State 3 transition** — peer pairs/connects via nRF Connect Mobile, then disconnects. The 120-s window doesn't matter for this transition — the moment of peer disconnect triggers the re-arm in BONDED_ONLY mode (FAST_2) since the bond is in the FAL. Average steps from ~362 µA → ~381 µA.
 
-[![state-transition-1-to-3](./assets/state-transition-1-to-3.png)](./assets/state-transition-1-to-3.png)
+<a href="./assets/state-transition-1-to-3.png"><img alt="state-transition-1-to-3" src="./assets/state-transition-1-to-3.png" width="600"></a>
 
 #### Comparing FAST_1 vs FAST_2 visually
 
 A single screenshot can show the radio-rate difference directly — left half is FAST_1 (~25 events/s), right half is FAST_2 (~8 events/s):
 
-[![zoom-fast1-vs-fast2](./assets/zoom-fast1-vs-fast2.png)](./assets/zoom-fast1-vs-fast2.png)
+<a href="./assets/zoom-fast1-vs-fast2.png"><img alt="zoom-fast1-vs-fast2" src="./assets/zoom-fast1-vs-fast2.png" width="600"></a>
 
 #### Single-event zooms
 
 A single BLE adv event (~10 mA peak, ~0.5 ms wide) — useful for computing the charge cost of one transmission:
 
-[![zoom-single-adv-event](./assets/zoom-single-adv-event.png)](./assets/zoom-single-adv-event.png)
+<a href="./assets/zoom-single-adv-event.png"><img alt="zoom-single-adv-event" src="./assets/zoom-single-adv-event.png" width="600"></a>
 
 A status notify event during a connection — wider envelope, includes both the conn-event ACK and the notification TX:
 
-[![zoom-status-notify](./assets/zoom-status-notify.png)](./assets/zoom-status-notify.png)
+<a href="./assets/zoom-status-notify.png"><img alt="zoom-status-notify" src="./assets/zoom-status-notify.png" width="600"></a>
 
 ### Practical implication for power-budget planning
 
@@ -519,8 +519,8 @@ The biggest opportunity is **avoiding State 2** if power matters. Right now the 
 
 Reference photos of the PPK2 + DK + (optional) oscilloscope setup used for these measurements:
 
-[![ppk2 wired to DK](./assets/nrf_board_ppk2.jpg)](./assets/nrf_board_ppk2.jpg)
-[![ppk2 + scope](./assets/nrf_board_ppk2_oscope.jpg)](./assets/nrf_board_ppk2_oscope.jpg)
+<a href="./assets/nrf_board_ppk2.jpg"><img alt="ppk2 wired to DK" src="./assets/nrf_board_ppk2.jpg" width="600"></a>
+<a href="./assets/nrf_board_ppk2_oscope.jpg"><img alt="ppk2 + scope" src="./assets/nrf_board_ppk2_oscope.jpg" width="600"></a>
 
 A short clip showing the **closed-loop sensor → control → fan path** end-to-end (45 MB, stored in Git LFS — click play to stream): pinching the SHT3x sensor between two fingers warms it via body heat. The sensor thread picks up the rising reading, `control.c` in sensor mode interpolates a new target PWM duty along the `thr1`/`thr2` ramp, and the oscilloscope shows the PWM waveform widening its duty cycle in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the periodic BLE radio events riding on top of the slowly-changing background current, with the radio cost (~125 µA in FAST_1, ~91 µA in FAST_2) easily distinguishable from the PWM contribution at this zoom level.
 

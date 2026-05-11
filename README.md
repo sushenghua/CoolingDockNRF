@@ -4,7 +4,7 @@ Zephyr / nRF Connect SDK firmware for the **Nordic nRF52832 DK** that re-impleme
 
 Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port. Only BLE control + local sensor sampling + fan PWM are implemented.
 
-[![Bench setup: nRF52 DK + SHT3x + PPK2 + oscilloscope](doc/assets/nrf_board_ppk2_oscope.jpg)](doc/assets/nrf_board_ppk2_oscope.jpg)
+<a href="doc/assets/nrf_board_ppk2_oscope.jpg"><img alt="Bench setup: nRF52 DK + SHT3x + PPK2 + oscilloscope" src="doc/assets/nrf_board_ppk2_oscope.jpg" width="600"></a>
 
 ## What this repo demonstrates
 
@@ -87,11 +87,11 @@ See [`tests/README.md`](tests/README.md) for the rationale behind each tier and 
 
 PPK2 inserted in series at P22 for current measurement (Ampere mode), with the SHT3x sensor on the I2C header:
 
-[![nRF52 DK + PPK2](doc/assets/nrf_board_ppk2.jpg)](doc/assets/nrf_board_ppk2.jpg)
+<a href="doc/assets/nrf_board_ppk2.jpg"><img alt="nRF52 DK + PPK2" src="doc/assets/nrf_board_ppk2.jpg" width="600"></a>
 
 Adding an oscilloscope tap so PWM transitions and BLE radio bursts can be correlated with the PPK2 current trace:
 
-[![nRF52 DK + PPK2 + scope](doc/assets/nrf_board_ppk2_oscope.jpg)](doc/assets/nrf_board_ppk2_oscope.jpg)
+<a href="doc/assets/nrf_board_ppk2_oscope.jpg"><img alt="nRF52 DK + PPK2 + scope" src="doc/assets/nrf_board_ppk2_oscope.jpg" width="600"></a>
 
 Short clip showing the **closed-loop sensor → control → fan path live**: pinching the SHT3x sensor between two fingers warms it (body heat). The sensor thread picks up the higher reading, the control loop (sensor mode, hysteresis with linear ramp from `thr1` to `thr2`) bumps up the target PWM duty, and the oscilloscope shows the PWM waveform's duty cycle widening in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the BLE radio events superimposed on the slowly-changing background current.
 
