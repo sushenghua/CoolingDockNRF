@@ -111,18 +111,25 @@ Power Profiler now both supplies and measures. Slightly less precise than P22 Am
 
 ## What the readings mean
 
-Rough breakdown for our firmware in OPEN advertising mode, no client connected, no fan running:
+**Measured** breakdown for our firmware (after `power_profile.conf` overlay), in each of the four BLE states. The active-draw column shows what individual events look like when zoomed-in; the avg-contribution column is what they contribute when averaged over a 10-second window:
 
 | Component | Active draw | Active duration | Avg contribution |
 |---|---|---|---|
-| nRF52 CPU (running threads) | ~3 mA | few ms / sample cycle | ~30–60 µA |
-| BLE radio: advertising (~100 ms interval) | ~10 mA peaks | ~1 ms every 100 ms | ~100 µA |
-| BLE radio: connected + 500 ms notifications | ~7 mA peaks | ~2–3 ms per conn event | **300–500 µA** |
-| SHT3x measurement (single-shot, high-rep) | ~600 µA | ~15 ms per sample | ~18 µA at 500 ms cadence |
+| Background floor (CPU idle + sensor/PWM/I2C peripherals + kernel ticks + BLE controller bookkeeping) | varies | continuous | **~290 µA** (the "Quiet" state floor) |
+| BLE radio: FAST_1 advertising (`BT_LE_ADV_CONN_FAST_1`, 30-60 ms, 3 channels) | ~10 mA peaks | ~0.5 ms × ~25/s | **~280 µA** marginal cost |
+| BLE radio: FAST_2 advertising (`BT_LE_ADV_CONN_FAST_2`, 100-150 ms, 3 channels) | ~10 mA peaks | ~0.5 ms × ~8/s | **~91 µA** marginal cost |
+| BLE radio: connected + 500 ms notifications | ~10 mA peaks | ~0.5 ms per conn event | **~72 µA** marginal cost |
+| SHT3x measurement (single-shot, high-rep, 500 ms cadence) | ~600 µA | ~15 ms per sample | included in background |
 | SHT3x idle | ~0.6 µA | continuous | <1 µA |
-| Fan PWM peripheral (just the SoC) | ~50 µA | continuous when on | ~50 µA |
+| Fan PWM peripheral (just the SoC) | ~50 µA | continuous when on | included in background |
 
-Idle (advertising only) average: **~80–150 µA**. Connected + notifying: **~300–500 µA**. The fan motor itself dominates everything when running, but that's external to the SoC.
+Steady-state averages by BLE state (all measured on PCA10040 + PPK2):
+- **State 4** (Quiet, no advertising): **~290 µA**
+- **State 1** (Connected + notifying): **~362 µA**
+- **State 3** (BONDED_ONLY advertising, FAST_2): **~381 µA**
+- **State 2** (OPEN advertising, FAST_1): **~570 µA**
+
+The fan motor itself dominates everything when running, but that's external to the SoC. See "State-dependent power regimes" below for the full breakdown.
 
 ---
 
@@ -273,18 +280,20 @@ LOG_INF("region X end");
 
 ## Useful baseline measurements to capture
 
-Every time you make a power-relevant change, measure these and compare to the previous values:
+Every time you make a power-relevant change, capture **all four steady states** (see "State-dependent power regimes" below) plus a few isolated event measurements:
 
 | Scenario | Capture |
 |---|---|
-| Idle, advertising only (OPEN mode, no peer) | 10 s average — your fundamental baseline |
-| Connected, peer subscribed to status notifications | 10 s average — your "active use" baseline |
+| State 1 — Connected + notifying (peer subscribed) | 10 s average — actively-used baseline |
+| State 2 — OPEN advertising (FAST_1, first 120 s after boot) | 10 s average — worst-case adv cost |
+| State 3 — BONDED_ONLY advertising (FAST_2, post-pairing or post-timeout) | 10 s average — steady-state field cost |
+| State 4 — Quiet (BONDED_ONLY with empty FAL) | 10 s average — pure background floor |
 | One BLE adv event isolated | Δt + charge — useful for tuning advertising interval |
 | One status notify isolated | Δt + charge — biggest single repeating cost |
 | One SHT3x sample isolated | Δt + charge — usually negligible relative to BLE |
 | One control-loop iteration | Δt + charge — shows fan PWM impact |
 
-Save the captures as CSV (`File` → `Save data`). Name them descriptively (`baseline-adv-only-FW0.1.0.csv`) so a year from now you can compare against current firmware quantitatively.
+Save the captures as CSV (`File` → `Save data`). Name them descriptively (`power-state-1-connected-362uA.csv`) so a year from now you can compare against current firmware quantitatively. See `doc/assets/` for the screenshots and `doc/ppk2_profile.md`'s "State-dependent power regimes" section for the measured numbers from this firmware.
 
 ---
 
@@ -294,7 +303,7 @@ Most relevant questions that `MARK_*` instrumentation can answer:
 
 - **How much does each `bt_gatt_notify` cost?** Wrap the call. Read avg × Δt.
 - **Is single-shot SHT3x more or less expensive than periodic?** Compile both, mark the sample, compare.
-- **Is I2C or BLE the bigger drain?** Mark each separately.
+- **Is I2C or BLE the bigger drain?** *Already answered by the state-regime data: BLE adv on FAST_1 contributes ~280 µA marginal, the I2C sensor poll contributes well under 20 µA. BLE is the bigger drain in every state but Quiet.*
 - **Does the brace-counter loop in `write_cmd` take measurable time?** Mark it.
 - **Does encrypted GATT cost more than plain ATT?** Toggle the encryption permissions, compare.
 
@@ -364,7 +373,7 @@ Baseline:       ~1.3 mA × ~98% of the time      ≈ 1300 µA contribution (~91%
 Total:                                          ≈ 1450 µA = 1.45 mA  ✓
 ```
 
-**Diagnosis:** The radio cost is normal. **The baseline is wrong**. For a properly power-managed nRF52, the baseline between events should be ~5–20 µA, not 1–2 mA. The chip is staying in System ON Active mode between adv events instead of dropping into a deeper sleep state.
+**Diagnosis:** The radio cost is normal. **The baseline is wrong**. The chip is staying in System ON Active mode between adv events instead of dropping into a deeper sleep state — for this firmware (with its sensor / PWM / I2C peripherals all initialized) the achievable Quiet floor turns out to be ~290 µA (measured later), not the textbook "5–20 µA" you'd see on a minimal Zephyr sample. Still, a ~1 mA *between-event* baseline is well above either target, so something is keeping the SoC active.
 
 ### Initial hypothesis — `CONFIG_PM=y` not in `prj.conf` — turned out to be wrong
 
@@ -568,15 +577,19 @@ The `-DEXTRA_CONF_FILE` argument layers the file on top of `prj.conf` — same a
 
 ### Diagnostic flow if you see "high idle current" in the future
 
-1. **Capture the chart**, note the average and the baseline-vs-event ratio.
-2. **If the baseline (between events) is mA-scale** → it's a peripheral, not CPU activity. Check:
-   - UART (`CONFIG_SERIAL=n`)
+1. **Capture the chart**, note the average and the baseline-vs-event ratio. Then identify which BLE state the device is in (see "State-dependent power regimes" — the same firmware ranges from 290 µA to 570 µA depending on state, before you change anything).
+2. **If the average is well above the expected state's measured value** (e.g. > 600 µA in State 3) → something is keeping the SoC out of deep sleep. Check:
+   - UART (`CONFIG_SERIAL=n` — biggest hammer)
    - PWM running with 0 % duty (gate the driver)
    - I2C / SPI / other peripherals held active
-3. **If the baseline is µA-scale but events are dense** → it's the radio. Check adv/connection interval.
-4. **If both are low** → you're done.
+3. **If average matches the expected state but events are still dense** → it's the radio. Check adv/connection interval.
+4. **If the average matches the State 4 Quiet floor (~290 µA on this firmware)** → you've hit the SoC + non-radio peripheral asymptote. Further reductions require gating peripherals (PWM, I2C) at the application level.
 
-The non-obvious lesson from this project: **CPU PM (`CONFIG_PM=y`) is necessary but not sufficient.** A single peripheral with `*_INIT_PRIORITY` running and clocks held active will dominate over CPU-idle savings. Always profile `SERIAL=n` first when chasing baseline current.
+The non-obvious lessons from this project:
+
+- **CPU PM (`CONFIG_PM=y`) is necessary but not sufficient.** A single peripheral with clocks held active will dominate over CPU-idle savings. Profile `SERIAL=n` first.
+- **The same firmware has 4 different "idle currents" depending on BLE state.** Always note which state you're in when quoting a number, otherwise the comparison is meaningless.
+- **Connected can be cheaper than open advertising.** For this firmware: State 1 (362 µA) < State 2 (570 µA). Don't assume "make it disconnect to save power" without measuring.
 
 ---
 
