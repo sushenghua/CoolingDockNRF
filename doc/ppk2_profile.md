@@ -404,6 +404,72 @@ Battery-life implications on a 240 mAh CR2477 cell:
 - Current 377 µA → ~1 month
 - Hypothetical 80 µA (further optimizations) → ~4 months
 
+### State-dependent power regimes
+
+The "average current" of this firmware isn't a single number — it depends on which BLE state-machine state the device is in. The pairing-window protocol in `ble_svc.c` (described in `CLAUDE.md`) defines four distinct steady states, each with different radio activity and therefore different current draw. Measured / estimated on this build with `power_profile.conf` overlay:
+
+| State | Average | Adv interval | When the device is here |
+|---|---|---|---|
+| **Connected + notifying** | ~550 µA | n/a (connected) | A peer subscribed, status frames every 500 ms, ~7.5–30 ms connection intervals |
+| **Advertising OPEN** (`FAST_1`) | **377 µA** | 30–60 ms | First 120 s after boot, no peer connected — anyone can pair |
+| **Advertising BONDED_ONLY** (`FAST_2`) | ~290 µA (estimated) | 100–150 ms | After successful pairing OR after 120 s window expired with a bond in the FAL |
+| **Quiet** (BONDED_ONLY, FAL empty) | ~250 µA | not advertising | After 120 s with no successful pairing AND no existing bond — soft-bricked state, hold BUTTON3 to recover |
+
+The ~85 µA difference between OPEN and BONDED_ONLY is **entirely the advertising interval**. `BT_LE_ADV_CONN_FAST_2` is roughly 3× slower than `FAST_1`, which means roughly 3× fewer radio events per second:
+
+```
+OPEN (FAST_1, ~25 events/s):       10 mA × 0.5 ms × 25 ≈ 125 µA from radio
+BONDED_ONLY (FAST_2, ~8 events/s): 10 mA × 0.5 ms ×  8 ≈  40 µA from radio
+Δ: ~85 µA savings, just from the slower interval
+```
+
+The ~250 µA "Quiet" floor is the **pure background cost** of the SoC with everything else gated off — HFXO calibration, idle PWM peripheral, kernel tick/timer interrupt overhead, BLE controller bookkeeping. That's the asymptote for further optimization without changing the firmware's core behavior.
+
+### Watching state transitions live
+
+After a fresh `west flash --erase` (wipes bonds, forces OPEN mode on boot), the chart shows distinct phases over the next ~2.5 minutes:
+
+```
+   Current
+   600 µA┤▟▟▟▟▟▟▟▟▟▟▟▟▟▟              ← peer connected during pairing window
+   500 µA┤
+   400 µA┤              ▟▟▟▟▟▟▟▟▟▟▟▟▟  ← peer gone, FAST_1 adv (OPEN)
+   300 µA┤                            ▟▟▟▟▟▟▟▟▟▟▟▟  ← 120 s elapsed, FAST_2 adv (BONDED_ONLY)
+   200 µA┤                                          ▁▁▁▁▁▁▁  ← FAL empty, no adv (Quiet)
+       └────────────────────────────────────────────────────── time →
+       0           ~30 s         ~2 min         ~2:05 min
+```
+
+The 120-second pairing-window timeout fires at exactly the 2-minute mark — a long enough capture shows a clean step-down in average current at that point. If a phone pairs before the 120 s expires, the step-down happens at the `pairing_complete` callback firing instead.
+
+This is *also* why first-flash measurements can be deceptively high. Right after `west flash --erase`, the device boots in OPEN mode with FAST_1 advertising and a paired phone usually auto-reconnects within seconds — giving a connected-state average of ~550 µA. After 2 minutes of leaving it alone (or after the phone walks out of range), the same device settles to ~290 µA. The firmware didn't change; the BLE state did.
+
+### Practical implication for power-budget planning
+
+For a battery-powered version of this firmware, the duty cycle between these states determines battery life:
+
+| Usage pattern | Approximate split | Average current | 240 mAh CR2477 life |
+|---|---|---|---|
+| User actively monitors via phone (always connected) | 100 % connected | ~550 µA | ~18 days |
+| User checks app a few times a day, ~1 min per check | 1 % connected, 99 % BONDED_ONLY adv | ~293 µA | ~34 days |
+| User configured once, then ignored it | 0 % connected, 100 % BONDED_ONLY adv | ~290 µA | ~34 days |
+| Worst case — fresh device, no bonds, 120 s elapsed | 100 % Quiet (advertising off!) | ~250 µA | ~40 days* |
+
+\* The "Quiet" state has the *lowest* current but is functionally unusable — no one can connect. Held BUTTON3 to recover.
+
+The realistic field usage is the second / third row (~290 µA average) — roughly **5× battery life** over the "always connected" worst case for the same product capability.
+
+**Suggested CSV naming for the four captures:**
+
+```
+power-state-1-connected-550uA.csv
+power-state-2-open-adv-377uA.csv
+power-state-3-bonded-adv-290uA.csv
+power-state-4-quiet-250uA.csv
+```
+
+Save all four whenever the firmware changes — that's the quantitative model of every steady state, which lets future "what does this Kconfig change do?" questions have a precise answer instead of one summary number.
+
 ### Why baseline isn't lower than 377 µA
 
 Decomposition of the 377 µA:
