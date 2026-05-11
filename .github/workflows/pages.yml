@@ -1,0 +1,65 @@
+name: Deploy GitHub Pages
+
+# Builds the markdown docs (README.md, doc/*.md, etc.) with Jekyll and
+# deploys to GitHub Pages. Critical difference from the default
+# "Deploy from a branch" Pages build: this checks out the repo with
+# `lfs: true` so LFS-tracked binaries (the demo video) land in the
+# published artifact instead of as 130-byte pointer files.
+#
+# After committing this workflow, the user must:
+#   1. Go to repo Settings → Pages
+#   2. Under "Build and deployment" set Source to "GitHub Actions"
+#      (it defaults to "Deploy from a branch")
+#   3. Push to main — the workflow runs, deploys, and the embedded
+#      <video> tag in README.md / doc/ppk2_profile.md plays.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, queue new ones; don't cancel
+# an in-progress deploy because the artifact upload is non-trivial.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with LFS)
+        uses: actions/checkout@v4
+        with:
+          # Pulls LFS-tracked files (videos, large binaries in
+          # doc/assets/) so they're served as real bytes by Pages
+          # rather than as LFS pointer text.
+          lfs: true
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
