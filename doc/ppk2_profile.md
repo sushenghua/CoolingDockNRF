@@ -385,24 +385,36 @@ CONFIG_LOG_BACKEND_UART=n
 CONFIG_BOOT_BANNER=n
 ```
 
-**Result**: 1.44 mA → **377 µA**. **74 % reduction.**
+**Result**: 1.44 mA → ~381 µA (matched against the State 3 BONDED_ONLY-adv reading we measured later). **~74 % reduction.**
 
 That's the single largest power optimization available without changing application logic — and most BLE Zephyr power-profiling guides hit this same wall. The fact that PM didn't move the needle but `SERIAL=n` did was the diagnostic key: it pointed at "a peripheral keeping the SoC awake," not "the CPU not sleeping."
 
+> **Historical note on the "377 µA" number** that appears in early git log commits and earlier doc revisions: the post-SERIAL=n measurement was taken under conditions we now know corresponded to **State 3** (BONDED_ONLY advertising at FAST_2 — a stale phone-side bond was reused, the 120-s pairing window had already expired). A precise re-measurement of the same state on the same firmware reads **381 µA**. The 377 µA was within capture noise of that. Both numbers refer to the same steady state — neither was state-aware at the time of measurement.
+
 ### Final measured numbers on this firmware
 
-Advertising-only mode, no peer connected, on PCA10040 with PPK2 in Ampere mode at P22:
+PCA10040 with PPK2 in Ampere mode at P22. The post-fix average depends on the device's BLE state, but the *jump* from the SERIAL=n change is ~1 mA in every state:
 
 | Configuration | Average | vs default | Notes |
 |---|---|---|---|
 | `prj.conf` default | 1.45 mA | baseline | UART driver + log backend on, no PM |
 | `+ CONFIG_PM=y + CONFIG_PM_DEVICE=y` | 1.44 mA | −0.7 % | Negligible — PM was correct but UART blocked deep sleep |
-| `+ CONFIG_SERIAL=n` (and friends) | **377 µA** | **−74 %** | UART driver out, SoC can finally enter deep sleep |
+| `+ CONFIG_SERIAL=n` (`power_profile.conf` overlay) | **290–570 µA** | **−61 % to −80 %** | Depends on BLE state — see the state-dependent table below |
+
+The post-fix range covers all four steady states. Per-state numbers (measured):
+
+| State | Average |
+|---|---|
+| State 4 (Quiet, FAL empty) | **290 µA** (−80 %) |
+| State 1 (Connected + notifying) | **362 µA** (−75 %) |
+| State 3 (BONDED_ONLY adv FAST_2) | **381 µA** (−74 %) |
+| State 2 (OPEN adv FAST_1) | **570 µA** (−61 %) |
 
 Battery-life implications on a 240 mAh CR2477 cell:
 - Original 1.45 mA → ~7 days
-- Current 377 µA → ~1 month
-- Hypothetical 80 µA (further optimizations) → ~4 months
+- Current 290–570 µA depending on state → ~18 days (worst case) to ~34 days (best case)
+- Realistic field usage (mostly State 3, occasional State 1) → ~26 days
+- Hypothetical 80 µA with further optimizations → ~4 months
 
 ### State-dependent power regimes (measured)
 
