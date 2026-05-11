@@ -95,8 +95,14 @@ Adding an oscilloscope tap so PWM transitions and BLE radio bursts can be correl
 
 Short clip showing the **closed-loop sensor → control → fan path live**: pinching the SHT3x sensor between two fingers warms it (body heat). The sensor thread picks up the higher reading, the control loop (sensor mode, hysteresis with linear ramp from `thr1` to `thr2`) bumps up the target PWM duty, and the oscilloscope shows the PWM waveform's duty cycle widening in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the BLE radio events superimposed on the slowly-changing background current. Click play to stream:
 
+<!-- Video source is a GitHub user-attachment URL rather than the
+     in-repo file at doc/assets/nrf_board_ppk2_oscope.mp4 — github.com's
+     Content-Security-Policy excludes raw.githubusercontent.com from
+     media-src, so an in-repo <video> source won't play on the repo
+     home page. The user-attachments domain IS on the allow-list. The
+     in-repo copy is kept for versioning + offline access. -->
 <video controls preload="none" width="800" poster="doc/assets/nrf_board_ppk2_oscope.jpg">
-  <source src="doc/assets/nrf_board_ppk2_oscope.mp4" type="video/mp4">
+  <source src="https://github.com/user-attachments/assets/cb884f7a-21bd-4922-9ae0-8e61d6cf00b9" type="video/mp4">
   Your browser does not support inline video. <a href="doc/assets/nrf_board_ppk2_oscope.mp4">Download the video</a> instead.
 </video>
 

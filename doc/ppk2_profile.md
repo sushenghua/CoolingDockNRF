@@ -524,8 +524,12 @@ Reference photos of the PPK2 + DK + (optional) oscilloscope setup used for these
 
 A short clip showing the **closed-loop sensor → control → fan path** end-to-end (45 MB, stored in Git LFS — click play to stream): pinching the SHT3x sensor between two fingers warms it via body heat. The sensor thread picks up the rising reading, `control.c` in sensor mode interpolates a new target PWM duty along the `thr1`/`thr2` ramp, and the oscilloscope shows the PWM waveform widening its duty cycle in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the periodic BLE radio events riding on top of the slowly-changing background current, with the radio cost (~125 µA in FAST_1, ~91 µA in FAST_2) easily distinguishable from the PWM contribution at this zoom level.
 
+<!-- See README.md for why the src is a github.com user-attachment
+     URL rather than the in-repo file. Short version: github.com CSP
+     excludes raw.githubusercontent.com from <video> media-src. The
+     attachment URL works on both github.com README and GitHub Pages. -->
 <video controls preload="none" width="800" poster="./assets/nrf_board_ppk2_oscope.jpg">
-  <source src="./assets/nrf_board_ppk2_oscope.mp4" type="video/mp4">
+  <source src="https://github.com/user-attachments/assets/cb884f7a-21bd-4922-9ae0-8e61d6cf00b9" type="video/mp4">
   Your browser does not support inline video. <a href="./assets/nrf_board_ppk2_oscope.mp4">Download the video</a> instead.
 </video>
 
