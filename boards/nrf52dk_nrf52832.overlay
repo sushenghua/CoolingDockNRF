@@ -1,11 +1,14 @@
 /* Devicetree overlay for the CoolingDock-equivalent build on the
- * nRF52832 DK (PCA10040).
+ * nRF52832 DK (PCA10040). Pin labels are the on-board silkscreen
+ * Pn.mm format (port n, pin mm); see the silkscreen on the board
+ * back-side or refer to the PCA10040 hardware files for physical
+ * header positions.
  *
  * Pin map:
- *   I2C0 SCL        P0.27   (Arduino A5)  -> SHT3x SCL
- *   I2C0 SDA        P0.26   (Arduino A4)  -> SHT3x SDA
- *   PWM0 channel 0  P0.13   (Arduino D2)  -> Fan PWM   (22 kHz)
- *   GPIO out        P0.14   (Arduino D3)  -> Fan power gate (active-high)
+ *   P0.27   I2C0 SCL        -> SHT3x SCL
+ *   P0.26   I2C0 SDA        -> SHT3x SDA
+ *   P0.13   PWM0 channel 0  -> Fan PWM   (22 kHz)
+ *   P0.14   GPIO out        -> Fan power gate (active-high)
  */
 
 #include <zephyr/dt-bindings/pwm/pwm.h>

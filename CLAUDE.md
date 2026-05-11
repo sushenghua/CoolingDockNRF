@@ -25,12 +25,12 @@ Single-test rebuild without pristine: drop `-p always`. Clean: `rm -rf build`.
 
 `boards/nrf52dk_nrf52832.overlay` wires:
 
-| Function          | nRF Pin | Header     | Notes                  |
-|-------------------|---------|------------|------------------------|
-| SHT3x SCL         | P0.27   | Arduino A5 | I2C0, 100 kHz          |
-| SHT3x SDA         | P0.26   | Arduino A4 | addr 0x45 (ADDR pin high; tie ADDR to GND for 0x44) |
-| Fan PWM           | P0.13   | Arduino D2 | `&pwm0` ch0 @ 22 kHz   |
-| Fan power gate    | P0.14   | Arduino D3 | active-high GPIO out   |
+| Function          | nRF Pin (silkscreen) | Notes                  |
+|-------------------|----------------------|------------------------|
+| SHT3x SCL         | P0.27                | I2C0, 100 kHz          |
+| SHT3x SDA         | P0.26                | addr 0x45 (ADDR pin high; tie ADDR to GND for 0x44) |
+| Fan PWM           | P0.13                | `&pwm0` ch0 @ 22 kHz   |
+| Fan power gate    | P0.14                | active-high GPIO out   |
 
 The SHT3x must be physically wired; `device_is_ready()` will fail and the sensor thread will exit if not present. Fan PWM uses the nRF hardware PWM peripheral via Zephyr's `pwm_dt_spec` API (under the hood: `nrfx_pwm`).
 

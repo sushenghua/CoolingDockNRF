@@ -79,8 +79,8 @@ See [`tests/README.md`](tests/README.md) for the rationale behind each tier and 
 ## Hardware
 
 - Nordic **nRF52 DK** (PCA10040, nRF52832 — Cortex-M4 @ 64 MHz, BLE 5)
-- **SHT3x** temperature / humidity sensor on Arduino A4/A5 (I2C0)
-- PWM fan + separate GPIO power gate on Arduino D2/D3
+- **SHT3x** temperature / humidity sensor on P0.26 (SDA) / P0.27 (SCL) (I2C0)
+- PWM fan on P0.13 + separate GPIO power gate on P0.14
 - (Optional) **Nordic PPK2** — Power Profiler Kit II — for current measurements, wired in Ampere mode at the DK's P22 header (SB9 cut)
 
 ### Setup gallery
