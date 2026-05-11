@@ -1,6 +1,6 @@
 # CoolingDock on Zephyr / nRF52
 
-Zephyr / nRF Connect SDK firmware for the **Nordic nRF52832 DK** that re-implements the local-control feature set of the original ESP32-C3 **CoolingDock** product — wire-compatible with the existing Capacitor / React frontend (same UUIDs, JSON shapes, MTU), so the app runs against this firmware unmodified.
+Zephyr / nRF Connect SDK firmware for the **Nordic nRF52832 DK** that re-implements the local-control feature set of the original ESP32-C3 **CoolingDock** product ([demo & reference](https://github.com/sushenghua/CoolingDockDemo)) — wire-compatible with the existing Capacitor / React frontend (same UUIDs, JSON shapes, MTU), so the app runs against this firmware unmodified.
 
 Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port. Only BLE control + local sensor sampling + fan PWM are implemented.
 
