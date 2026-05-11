@@ -404,98 +404,135 @@ Battery-life implications on a 240 mAh CR2477 cell:
 - Current 377 µA → ~1 month
 - Hypothetical 80 µA (further optimizations) → ~4 months
 
-### State-dependent power regimes
+### State-dependent power regimes (measured)
 
-The "average current" of this firmware isn't a single number — it depends on which BLE state-machine state the device is in. The pairing-window protocol in `ble_svc.c` (described in `CLAUDE.md`) defines four distinct steady states, each with different radio activity and therefore different current draw. Measured / estimated on this build with `power_profile.conf` overlay:
+The "average current" of this firmware isn't a single number — it depends on which BLE state-machine state the device is in. The pairing-window protocol in `ble_svc.c` (described in `CLAUDE.md`) defines four distinct steady states. **Measured** on this build with `power_profile.conf` overlay, PCA10040 + PPK2 in Ampere mode at P22:
 
-| State | Average | Adv interval | When the device is here |
+| State | **Measured avg** | Adv interval | Capture | When the device is here |
+|---|---|---|---|---|
+| **State 1 — Connected + notifying** | **362 µA** | n/a (connected) | [![state-1](./assets/state-1-connected-362uA.png)](./assets/state-1-connected-362uA.png) | A peer subscribed, status frames every 500 ms |
+| **State 2 — Advertising OPEN** (`FAST_1`) | **570 µA** | 30–60 ms | [![state-2](./assets/state-2-open-adv-570uA.png)](./assets/state-2-open-adv-570uA.png) | First 120 s after boot, no peer connected |
+| **State 3 — Advertising BONDED_ONLY** (`FAST_2`) | **381 µA** | 100–150 ms | [![state-3](./assets/state-3-bonded-adv-381uA.png)](./assets/state-3-bonded-adv-381uA.png) | After successful pairing OR after 120 s window expired with a bond in the FAL |
+| **State 4 — Quiet** (BONDED_ONLY, FAL empty) | **290 µA** | not advertising | [![state-4](./assets/state-4-quiet-290uA.png)](./assets/state-4-quiet-290uA.png) | After 120 s with no pairing AND no existing bond — soft-bricked, hold BUTTON3 to recover |
+
+#### Counter-intuitive finding: connected is cheaper than open advertising
+
+Ranked cheapest to most expensive:
+
+```
+State 4 (Quiet)             290 µA  ← no radio, background only
+State 1 (Connected+notify)  362 µA  ← surprisingly cheap
+State 3 (BONDED_ONLY adv)   381 µA  ← marginally costlier than connected
+State 2 (OPEN adv FAST_1)   570 µA  ← most expensive
+```
+
+The intuition that "a live BLE connection costs more than just advertising" turns out to be **wrong** for this firmware. Reason:
+
+- **OPEN advertising (FAST_1)** transmits on all 3 BLE advertising channels every 30–60 ms = ~75 radio TX events per second. The chip is constantly waking the radio, hitting the LNA + PA, switching channels.
+- **Connected + notifying** has connection events at the negotiated interval (typically 30–100 ms). Most of those events are empty packets — just a 2-byte poll/ACK exchange to keep the link alive. Our status notify only injects a real payload once every 500 ms. The connection event itself is much shorter than a 3-channel adv burst.
+
+Net: connection events average less radio-on-time per second than FAST_1 advertising. ESP-IDF firmware on similar hardware shows the same pattern.
+
+#### Radio cost decomposition
+
+Subtracting the 290 µA "Quiet" floor (pure background — HFXO calibration, idle PWM peripheral, I2C idle, kernel tick interrupts, BLE controller bookkeeping) from each state gives the radio's marginal contribution:
+
+| State | Total | minus background | Radio cost |
 |---|---|---|---|
-| **Connected + notifying** | ~550 µA | n/a (connected) | A peer subscribed, status frames every 500 ms, ~7.5–30 ms connection intervals |
-| **Advertising OPEN** (`FAST_1`) | **377 µA** | 30–60 ms | First 120 s after boot, no peer connected — anyone can pair |
-| **Advertising BONDED_ONLY** (`FAST_2`) | ~290 µA (estimated) | 100–150 ms | After successful pairing OR after 120 s window expired with a bond in the FAL |
-| **Quiet** (BONDED_ONLY, FAL empty) | ~250 µA | not advertising | After 120 s with no successful pairing AND no existing bond — soft-bricked state, hold BUTTON3 to recover |
+| State 4 | 290 µA | 290 µA | **0 µA** (no radio) |
+| State 1 | 362 µA | 290 µA | **72 µA** (conn events + occasional notify TX) |
+| State 3 | 381 µA | 290 µA | **91 µA** (FAST_2 adv ~8 events/s × 3 channels) |
+| State 2 | 570 µA | 290 µA | **280 µA** (FAST_1 adv ~25 events/s × 3 channels) |
 
-The ~85 µA difference between OPEN and BONDED_ONLY is **entirely the advertising interval**. `BT_LE_ADV_CONN_FAST_2` is roughly 3× slower than `FAST_1`, which means roughly 3× fewer radio events per second:
+The FAST_1 vs FAST_2 ratio is ~3× (matches the interval ratio). State 2's 280 µA is the radio working hardest the firmware ever has it work.
 
-```
-OPEN (FAST_1, ~25 events/s):       10 mA × 0.5 ms × 25 ≈ 125 µA from radio
-BONDED_ONLY (FAST_2, ~8 events/s): 10 mA × 0.5 ms ×  8 ≈  40 µA from radio
-Δ: ~85 µA savings, just from the slower interval
-```
-
-The ~250 µA "Quiet" floor is the **pure background cost** of the SoC with everything else gated off — HFXO calibration, idle PWM peripheral, kernel tick/timer interrupt overhead, BLE controller bookkeeping. That's the asymptote for further optimization without changing the firmware's core behavior.
+The 290 µA "Quiet" floor is the **asymptote for further optimization** without changing the firmware's core behavior — it's what the SoC + non-radio peripherals fundamentally cost.
 
 ### Watching state transitions live
 
-After a fresh `west flash --erase` (wipes bonds, forces OPEN mode on boot), the chart shows distinct phases over the next ~2.5 minutes:
+Two transitions are documented from real captures:
 
-```
-   Current
-   600 µA┤▟▟▟▟▟▟▟▟▟▟▟▟▟▟              ← peer connected during pairing window
-   500 µA┤
-   400 µA┤              ▟▟▟▟▟▟▟▟▟▟▟▟▟  ← peer gone, FAST_1 adv (OPEN)
-   300 µA┤                            ▟▟▟▟▟▟▟▟▟▟▟▟  ← 120 s elapsed, FAST_2 adv (BONDED_ONLY)
-   200 µA┤                                          ▁▁▁▁▁▁▁  ← FAL empty, no adv (Quiet)
-       └────────────────────────────────────────────────────── time →
-       0           ~30 s         ~2 min         ~2:05 min
-```
+**State 2 → State 4 transition** — fresh `west flash --erase`, no bond on either side, leave alone 3 minutes. At the 120-s mark the OPEN pairing window expires; with an empty FAL the firmware stops advertising entirely. Average steps down from ~570 µA → ~290 µA. The post-transition right half of the chart is essentially flat — no radio events at all.
 
-The 120-second pairing-window timeout fires at exactly the 2-minute mark — a long enough capture shows a clean step-down in average current at that point. If a phone pairs before the 120 s expires, the step-down happens at the `pairing_complete` callback firing instead.
+[![state-transition-2-to-4](./assets/state-transition-2-to-4.png)](./assets/state-transition-2-to-4.png)
 
-This is *also* why first-flash measurements can be deceptively high. Right after `west flash --erase`, the device boots in OPEN mode with FAST_1 advertising and a paired phone usually auto-reconnects within seconds — giving a connected-state average of ~550 µA. After 2 minutes of leaving it alone (or after the phone walks out of range), the same device settles to ~290 µA. The firmware didn't change; the BLE state did.
+**State 1 → State 3 transition** — peer pairs/connects via nRF Connect Mobile, then disconnects. The 120-s window doesn't matter for this transition — the moment of peer disconnect triggers the re-arm in BONDED_ONLY mode (FAST_2) since the bond is in the FAL. Average steps from ~362 µA → ~381 µA.
+
+[![state-transition-1-to-3](./assets/state-transition-1-to-3.png)](./assets/state-transition-1-to-3.png)
+
+#### Comparing FAST_1 vs FAST_2 visually
+
+A single screenshot can show the radio-rate difference directly — left half is FAST_1 (~25 events/s), right half is FAST_2 (~8 events/s):
+
+[![zoom-fast1-vs-fast2](./assets/zoom-fast1-vs-fast2.png)](./assets/zoom-fast1-vs-fast2.png)
+
+#### Single-event zooms
+
+A single BLE adv event (~10 mA peak, ~0.5 ms wide) — useful for computing the charge cost of one transmission:
+
+[![zoom-single-adv-event](./assets/zoom-single-adv-event.png)](./assets/zoom-single-adv-event.png)
+
+A status notify event during a connection — wider envelope, includes both the conn-event ACK and the notification TX:
+
+[![zoom-status-notify](./assets/zoom-status-notify.png)](./assets/zoom-status-notify.png)
 
 ### Practical implication for power-budget planning
 
-For a battery-powered version of this firmware, the duty cycle between these states determines battery life:
+For a battery-powered version of this firmware, the duty cycle between states determines battery life. **Recalculated with measured numbers** on a 240 mAh CR2477 cell:
 
-| Usage pattern | Approximate split | Average current | 240 mAh CR2477 life |
+| Usage pattern | Approximate split | Average current | CR2477 life |
 |---|---|---|---|
-| User actively monitors via phone (always connected) | 100 % connected | ~550 µA | ~18 days |
-| User checks app a few times a day, ~1 min per check | 1 % connected, 99 % BONDED_ONLY adv | ~293 µA | ~34 days |
-| User configured once, then ignored it | 0 % connected, 100 % BONDED_ONLY adv | ~290 µA | ~34 days |
-| Worst case — fresh device, no bonds, 120 s elapsed | 100 % Quiet (advertising off!) | ~250 µA | ~40 days* |
+| User actively monitors via phone (always connected) | 100 % State 1 | **362 µA** | **~28 days** |
+| User checks app a few times a day, ~1 min per check | 1 % State 1, 99 % State 3 | **381 µA** | ~26 days |
+| User configured once, then ignored | 100 % State 3 | **381 µA** | ~26 days |
+| Always-on advertising for fresh-device discovery | 100 % State 2 | **570 µA** | ~18 days |
+| Worst case — fresh device, no bonds, 120 s elapsed | 100 % State 4 (advertising off!) | **290 µA** | ~34 days* |
 
-\* The "Quiet" state has the *lowest* current but is functionally unusable — no one can connect. Held BUTTON3 to recover.
+\* State 4 has the *lowest* current but is functionally unusable — no one can connect. Hold BUTTON3 to recover.
 
-The realistic field usage is the second / third row (~290 µA average) — roughly **5× battery life** over the "always connected" worst case for the same product capability.
+**Surprising result:** "always connected" (State 1) actually gives the **longest usable battery life** of any reachable steady state — beating BONDED_ONLY advertising slightly. So a battery-powered variant of this product would benefit from keeping the app open continuously rather than disconnecting between checks. That's the opposite of what most BLE power-saving guidance assumes.
 
-**Suggested CSV naming for the four captures:**
+The biggest opportunity is **avoiding State 2** if power matters. Right now the firmware sits in OPEN advertising for 120 s after every boot. For battery-powered use, dropping the pairing window to 30 s (or making it user-initiated via BUTTON3) would save significant power for a device that mostly already has a bond.
+
+### Hardware setup photos
+
+Reference photos of the PPK2 + DK + (optional) oscilloscope setup used for these measurements:
+
+[![ppk2 wired to DK](./assets/nrf_board_ppk2.jpg)](./assets/nrf_board_ppk2.jpg)
+[![ppk2 + scope](./assets/nrf_board_ppk2_oscope.jpg)](./assets/nrf_board_ppk2_oscope.jpg)
+
+A short clip of a live capture session is available at `doc/assets/nrf_board_ppk2_oscope.mp4` (45 MB, stored in Git LFS).
+
+**Suggested CSV naming for raw captures** (one per state, save via `File → Save data`):
 
 ```
-power-state-1-connected-550uA.csv
-power-state-2-open-adv-377uA.csv
-power-state-3-bonded-adv-290uA.csv
-power-state-4-quiet-250uA.csv
+power-state-1-connected-362uA.csv
+power-state-2-open-adv-570uA.csv
+power-state-3-bonded-adv-381uA.csv
+power-state-4-quiet-290uA.csv
 ```
 
 Save all four whenever the firmware changes — that's the quantitative model of every steady state, which lets future "what does this Kconfig change do?" questions have a precise answer instead of one summary number.
 
-### Why baseline isn't lower than 377 µA
+### Where the 290 µA "Quiet" floor goes
 
-Decomposition of the 377 µA:
+Decomposition (estimated, since these are all simultaneous):
 
-```
-BLE adv events: ~10 mA × ~0.5 ms × 25 events/s ≈   125 µA   (~33%)
-Everything else (background):                   ≈   252 µA   (~67%)
-                                                ───────────
-Total:                                           377 µA
-```
-
-The 252 µA background is approximately:
 - HFXO calibration cycles
 - PWM peripheral kept active even at 0 % duty (~50 µA)
-- I2C peripheral idle currents
+- I2C peripheral idle currents (sensor thread polls every 500 ms)
 - Zephyr kernel tick/timer interrupt overhead
-- BLE controller's own bookkeeping
+- BLE controller's own bookkeeping (state machine, link layer housekeeping)
 
-Further optimizations available if needed:
+Further optimizations available if needed for a battery-powered variant:
 
-1. **Slower advertising interval.** Currently `BT_LE_ADV_CONN_FAST_1` (30–60 ms). Switching to `BT_LE_ADV_CONN_SLOW` (1000–1500 ms) cuts radio events ~30× — saves ~120 µA.
-2. **Disable PWM when fan is off.** Even at 0 % duty the peripheral is running. Gating it saves ~50 µA.
-3. **Slower sensor sample rate.** 500 ms → 5 s saves a few µA.
-4. **Slower status notify period.** 500 ms → 5 s saves a few µA per connected event.
+1. **Reduce pairing-window time.** Currently 120 s in `ble_svc.c`. Drop to 30 s — saves ~280 µA × 90 s per boot, plus reduces the "average if user power-cycles often" weight.
+2. **Slower advertising in BONDED_ONLY.** Currently `BT_LE_ADV_CONN_FAST_2` (100–150 ms). Switching to `BT_LE_ADV_CONN_SLOW` (1000–1500 ms) drops state-3 radio cost ~10× — saves ~80 µA. Cost: phone takes longer to find device.
+3. **Disable PWM when fan is off.** Even at 0 % duty the peripheral is running. Gating it saves ~50 µA.
+4. **Slower sensor sample rate.** 500 ms → 5 s saves a few µA.
+5. **Slower status notify period.** 500 ms → 5 s saves a few µA per connected event.
 
-For a wall-powered fan controller, **377 µA is more than fine**. For a future battery-powered variant, the four levers above could plausibly land in the 50–100 µA range without much application-code change.
+For a wall-powered fan controller, **290–381 µA is more than fine**. For a battery-powered variant, the levers above could plausibly land in the 80–150 µA range without much application-code change.
 
 ### How to use power_profile.conf
 
