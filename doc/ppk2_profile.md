@@ -522,7 +522,12 @@ Reference photos of the PPK2 + DK + (optional) oscilloscope setup used for these
 [![ppk2 wired to DK](./assets/nrf_board_ppk2.jpg)](./assets/nrf_board_ppk2.jpg)
 [![ppk2 + scope](./assets/nrf_board_ppk2_oscope.jpg)](./assets/nrf_board_ppk2_oscope.jpg)
 
-A short clip of a live capture session is available at `doc/assets/nrf_board_ppk2_oscope.mp4` (45 MB, stored in Git LFS).
+A short clip of a live capture session (45 MB, stored in Git LFS — click play to stream):
+
+<video controls preload="none" width="800" poster="./assets/nrf_board_ppk2_oscope.jpg">
+  <source src="./assets/nrf_board_ppk2_oscope.mp4" type="video/mp4">
+  Your browser does not support inline video. <a href="./assets/nrf_board_ppk2_oscope.mp4">Download the video</a> instead.
+</video>
 
 **Suggested CSV naming for raw captures** (one per state, save via `File → Save data`):
 
