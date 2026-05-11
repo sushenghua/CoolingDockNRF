@@ -93,7 +93,7 @@ Adding an oscilloscope tap so PWM transitions and BLE radio bursts can be correl
 
 [![nRF52 DK + PPK2 + scope](doc/assets/nrf_board_ppk2_oscope.jpg)](doc/assets/nrf_board_ppk2_oscope.jpg)
 
-Short clip of a live capture session (the PPK2 chart updates as the BLE state machine transitions; the scope shows the I2C / PWM activity in parallel) — click play to stream:
+Short clip showing the **closed-loop sensor → control → fan path live**: pinching the SHT3x sensor between two fingers warms it (body heat). The sensor thread picks up the higher reading, the control loop (sensor mode, hysteresis with linear ramp from `thr1` to `thr2`) bumps up the target PWM duty, and the oscilloscope shows the PWM waveform's duty cycle widening in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the BLE radio events superimposed on the slowly-changing background current. Click play to stream:
 
 <video controls preload="none" width="800" poster="doc/assets/nrf_board_ppk2_oscope.jpg">
   <source src="doc/assets/nrf_board_ppk2_oscope.mp4" type="video/mp4">
