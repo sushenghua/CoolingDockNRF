@@ -1,2 +1,7 @@
-doc/assets/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+# .mp4 dropped from LFS: github.com's repo-page <video> tag refuses to
+# load LFS-served sources (Content-Type comes back as
+# application/octet-stream and media.githubusercontent.com isn't on
+# the CSP media-src allow-list). Committing compressed videos < 10 MB
+# directly to git is the only way to get inline playback on the repo
+# home page. .mov pattern kept in case bigger captures ever land here.
 doc/assets/**/*.mov filter=lfs diff=lfs merge=lfs -text
