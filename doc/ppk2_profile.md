@@ -13,7 +13,7 @@ A USB-stick from Nordic that measures current from ~200 nA to 1 A at 100 ksps. T
 | **Source** | PPK2 supplies VDD and measures the current it sources | When you want to vary VDD across measurements (e.g. simulate battery drain) |
 | **Ampere** | Some other supply powers the DUT; PPK2 sits in series like an ammeter | The default for "just measure how much my firmware uses" |
 
-For everyday firmware power profiling on this project, **Ampere mode at the DK's P22 current-measurement header** is the canonical setup.
+For everyday firmware power profiling on this project, **Ampere mode at the DK's P22 current-measurement header** is the standard setup.
 
 ---
 
@@ -21,7 +21,7 @@ For everyday firmware power profiling on this project, **Ampere mode at the DK's
 
 ### One-time board modification
 
-The PCA10040 ships with **solder bridge SB9** shorting the two pins of the `P22` current-measurement header. With SB9 intact, current flows from the on-board 3.3 V regulator straight to VDD_nRF — no way to insert an ammeter.
+The PCA10040 ships with **solder bridge SB9** shorting the two pins of the `P22` current-measurement header. With SB9 intact, current flows from the on-board 3.3 V regulator straight to VDD_nRF, with no way to insert an ammeter.
 
 **Cut SB9** on the back of the DK with a sharp knife or scalpel. After this, current must flow through whatever you place across P22 to reach VDD_nRF.
 
@@ -35,7 +35,7 @@ Before SB9 cut:                 After SB9 cut:
 
 The cut is one-way unless you re-solder a bridge across the SB9 pads later. To reprogram the chip while SB9 is cut and PPK2 is wired in: disconnect any external supply, briefly add a jumper across P22 to short it, flash, then remove the jumper.
 
-> Note: PCA10040 has **no SW6/SW9/SW10 toggles** — those switches exist on the newer PCA10100 (nRF52833 DK), not on this board. PCA10040 uses solder-bridge modifications instead of switches for power-source selection.
+> Note: PCA10040 has **no SW6/SW9/SW10 toggles**: those switches exist on the newer PCA10100 (nRF52833 DK), not on this board. PCA10040 uses solder-bridge modifications instead of switches for power-source selection.
 
 ### Wiring the PPK2
 
@@ -165,7 +165,7 @@ The PPK2 has a 10-pin logic-port ribbon connector. The included ribbon cable has
 | D4–D7 | Green / Blue / Purple / Grey | unused GPIOs / additional regions |
 | GND | Black | DK GND |
 
-Use the LEDs as the easy default — they're already on the DK and exposed in devicetree as `led0`–`led3`. If you need more than four regions, route additional GPIOs (e.g. `P0.03`, `P0.04` on the Arduino headers) to D4–D7.
+Use the LEDs as the easy default: they're already on the DK and exposed in devicetree as `led0`–`led3`. If you need more than four regions, route additional GPIOs (e.g. `P0.03`, `P0.04` on the Arduino headers) to D4–D7.
 
 ### Code pattern
 
@@ -226,7 +226,7 @@ After flashing the instrumented firmware:
 3. Click + drag (or left-click + right-click) to drop two markers bracketing a single rising-to-falling edge of D0.
 4. The status panel shows Δt, average current, and charge for that region.
 
-So for example: `bt_gatt_notify` might show Δt ≈ 1.5 ms, avg ≈ 6 mA → charge ≈ 9 µC per notify. At 500 ms cadence, that's an average of 18 µA contributed by notifications alone — a number you can quote and compare against future code changes.
+So for example: `bt_gatt_notify` might show Δt ≈ 1.5 ms, avg ≈ 6 mA → charge ≈ 9 µC per notify. At 500 ms cadence, that's an average of 18 µA contributed by notifications alone, a number you can quote and compare against future code changes.
 
 ---
 
@@ -248,7 +248,7 @@ The "average between markers" reading then has tiny error.
 
 ### Differential measurement
 
-To answer "how much does feature X cost?" — measure twice:
+To answer "how much does feature X cost?", measure twice:
 
 1. Capture average current with the feature **disabled** (compile out, comment out, or runtime flag).
 2. Capture again with it **enabled**.
@@ -258,7 +258,7 @@ The difference (scaled by VDD) is what feature X costs in power.
 
 ### Synchronize with serial logs
 
-Have the firmware emit a log line at `MARK_HI`. The serial timestamp and the PPK2 timestamp can be correlated visually — useful for understanding what was happening in the firmware around an unexpected current spike.
+Have the firmware emit a log line at `MARK_HI`. The serial timestamp and the PPK2 timestamp can be correlated visually, which is useful for understanding what was happening in the firmware around an unexpected current spike.
 
 ```c
 MARK_HI(mark0);
@@ -274,7 +274,7 @@ LOG_INF("region X end");
 
 - **Per-instruction power.** PPK2 samples at 100 ksps, the chip runs at 64 MHz. You only see regions ≥ ~10 µs.
 - **Sleep-mode efficacy.** To validate System OFF / System ON, the firmware has to actually enter that mode (Zephyr does this automatically with `CONFIG_PM=y` when no thread is runnable). PPK2 shows whether the chip *actually* sleeps (current drops to single µA) or whether something is keeping it awake (residual mA).
-- **Causation.** If a region's current is high, the *why* is up to you to figure out from the code. PPK2 measures, doesn't explain.
+- **Causation.** If a region's current is high, the *why* is up to you to figure out from the code. PPK2 measures; it doesn't explain.
 
 ---
 
@@ -293,7 +293,7 @@ Every time you make a power-relevant change, capture **all four steady states** 
 | One SHT3x sample isolated | Δt + charge — usually negligible relative to BLE |
 | One control-loop iteration | Δt + charge — shows fan PWM impact |
 
-Save the captures as CSV (`File` → `Save data`). Name them descriptively (`power-state-1-connected-362uA.csv`) so a year from now you can compare against current firmware quantitatively. See `doc/assets/` for the screenshots and `doc/ppk2_profile.md`'s "State-dependent power regimes" section for the measured numbers from this firmware.
+Save the captures as CSV (`File` → `Save data`). Name them descriptively (`power-state-1-connected-362uA.csv`) so a year from now you can compare against current firmware quantitatively. See `doc/assets/` for the screenshots and the "State-dependent power regimes" section below for the measured numbers from this firmware.
 
 ---
 
@@ -307,27 +307,27 @@ Most relevant questions that `MARK_*` instrumentation can answer:
 - **Does the brace-counter loop in `write_cmd` take measurable time?** Mark it.
 - **Does encrypted GATT cost more than plain ATT?** Toggle the encryption permissions, compare.
 
-For a wall-powered fan controller, almost none of these matter — the fan motor dominates all firmware costs by orders of magnitude. For a battery-powered variant, this is exactly the workflow you'd run on every code change.
+For a wall-powered fan controller, almost none of these matter: the fan motor dominates all firmware costs by orders of magnitude. For a battery-powered variant, this is exactly the workflow you'd run on every code change.
 
 ---
 
 ## Bring-up gotchas (encountered on this project)
 
-Things that bit us during the first PPK2 setup. Surface them here so future-you doesn't waste an afternoon on the same dead-ends.
+Things that bit us during the first PPK2 setup, written down so the next setup doesn't lose an afternoon to the same dead ends.
 
 ### `Lock Y-axis` makes a working capture look empty
 
-The Power Profiler app's `Lock Y-axis` toggle (top-left) pins the chart's Y range. If it's locked at e.g. 0–500 nA but the firmware is drawing 1.4 mA, the trace lives entirely above the visible area — chart appears blank, even though the WINDOW stats panel correctly shows mA-range averages. **Fix**: toggle `Lock Y-axis` off so the chart auto-scales. Re-enable later once you've zoomed to a meaningful fixed range (e.g. 0–15 mA).
+The Power Profiler app's `Lock Y-axis` toggle (top-left) pins the chart's Y range. If it's locked at e.g. 0–500 nA but the firmware is drawing 1.4 mA, the trace lives entirely above the visible area: the chart appears blank, even though the WINDOW stats panel correctly shows mA-range averages. **Fix**: toggle `Lock Y-axis` off so the chart auto-scales. Re-enable later once you've zoomed to a meaningful fixed range (e.g. 0–15 mA).
 
 ### Polarity-swapped wires give clamped readings, not negative
 
-PPK2's reverse-current protection clamps to ~nA when VIN/VOUT are wired backwards. This presents identically to "PPK2 not in circuit" — the chip still gets *some* power (through the protection diodes) so BLE may even work, but the meter sees nothing. The first thing to try when readings look impossibly small is **swap the wires**.
+PPK2's reverse-current protection clamps to ~nA when VIN/VOUT are wired backwards. This presents identically to "PPK2 not in circuit": the chip still gets *some* power (through the protection diodes) so BLE may even work, but the meter sees nothing. The first thing to try when readings look impossibly small is **swap the wires**.
 
 Confirmed on this project: wires swapped → 1.5 nA average, 770 nA peak. Wires correct → 1.45 mA average, 11 mA peak. Three orders of magnitude difference from a wire-order mistake.
 
 ### Partial SB9 cut
 
-Cutting SB9 looks easy but a hair-thin copper strip can remain even after a confident-feeling slice. Symptom: chip runs but PPK2 reads ~0. Verify with a multimeter in continuity mode — probe both sides of SB9 with the DK unpowered. Beep / < 5 Ω = trace still continuous, re-cut deeper until you can see beige FR4 substrate where copper used to be.
+Cutting SB9 looks easy but a hair-thin copper strip can remain even after a confident-feeling slice. Symptom: chip runs but PPK2 reads ~0. Verify with a multimeter in continuity mode: probe both sides of SB9 with the DK unpowered. Beep / < 5 Ω = trace still continuous, re-cut deeper until you can see beige FR4 substrate where copper used to be.
 
 ### "PPK2 connecting…" hangs
 
@@ -373,9 +373,9 @@ Baseline:       ~1.3 mA × ~98% of the time      ≈ 1300 µA contribution (~91%
 Total:                                          ≈ 1450 µA = 1.45 mA  ✓
 ```
 
-**Diagnosis:** The radio cost is normal. **The baseline is wrong**. The chip is staying in System ON Active mode between adv events instead of dropping into a deeper sleep state — for this firmware (with its sensor / PWM / I2C peripherals all initialized) the achievable Quiet floor turns out to be ~290 µA (measured later), not the textbook "5–20 µA" you'd see on a minimal Zephyr sample. Still, a ~1 mA *between-event* baseline is well above either target, so something is keeping the SoC active.
+**Diagnosis:** The radio cost is normal. **The baseline is wrong**. The chip is staying in System ON Active mode between adv events instead of dropping into a deeper sleep state. For this firmware (with its sensor / PWM / I2C peripherals all initialized) the achievable Quiet floor turns out to be ~290 µA (measured later), not the textbook "5–20 µA" you'd see on a minimal Zephyr sample. Still, a ~1 mA *between-event* baseline is well above either target, so something is keeping the SoC active.
 
-### Initial hypothesis — `CONFIG_PM=y` not in `prj.conf` — turned out to be wrong
+### The first hypothesis (`CONFIG_PM=y` not in `prj.conf`) turned out to be wrong
 
 Zephyr's CPU sleep needs the Power Management subsystem. Without `CONFIG_PM=y`, the kernel idle thread does a basic `WFI` that only stops the CPU clock; peripheral clocks stay on. So the obvious first hypothesis was "PM is off, that's why idle is 1.45 mA". We added it.
 
@@ -385,7 +385,7 @@ This was a useful negative: PM *was* working, the kernel idle thread *was* sleep
 
 ### Real cause — the UART driver
 
-The actual culprit was the **UART peripheral**. `CONFIG_SERIAL=y` is the default; the driver initializes the UART at boot for the J-Link VCOM and holds it in a state that prevents the SoC from entering its deepest sleep modes — even with no log activity. Disabling just the log *backend* (`CONFIG_LOG_BACKEND_UART=n`) wasn't enough; the driver itself had to be removed.
+The actual culprit was the **UART peripheral**. `CONFIG_SERIAL=y` is the default; the driver initializes the UART at boot for the J-Link VCOM and holds it in a state that prevents the SoC from entering its deepest sleep modes, even with no log activity. Disabling just the log *backend* (`CONFIG_LOG_BACKEND_UART=n`) wasn't enough; the driver itself had to be removed.
 
 ```
 CONFIG_SERIAL=n
@@ -396,9 +396,9 @@ CONFIG_BOOT_BANNER=n
 
 **Result**: 1.44 mA → ~381 µA (matched against the State 3 BONDED_ONLY-adv reading we measured later). **~74 % reduction.**
 
-That's the single largest power optimization available without changing application logic — and most BLE Zephyr power-profiling guides hit this same wall. The fact that PM didn't move the needle but `SERIAL=n` did was the diagnostic key: it pointed at "a peripheral keeping the SoC awake," not "the CPU not sleeping."
+That's the single largest power optimization available without changing application logic, and most BLE Zephyr power-profiling guides hit this same wall. The fact that PM didn't move the needle but `SERIAL=n` did was the diagnostic key: it pointed at "a peripheral keeping the SoC awake," not "the CPU not sleeping."
 
-> **Historical note on the "377 µA" number** that appears in early git log commits and earlier doc revisions: the post-SERIAL=n measurement was taken under conditions we now know corresponded to **State 3** (BONDED_ONLY advertising at FAST_2 — a stale phone-side bond was reused, the 120-s pairing window had already expired). A precise re-measurement of the same state on the same firmware reads **381 µA**. The 377 µA was within capture noise of that. Both numbers refer to the same steady state — neither was state-aware at the time of measurement.
+> **Historical note on the "377 µA" number** that appears in early git log commits and earlier doc revisions: the post-SERIAL=n measurement was taken under conditions we now know corresponded to **State 3** (BONDED_ONLY advertising at FAST_2: a stale phone-side bond was reused, the 120-s pairing window had already expired). A precise re-measurement of the same state on the same firmware reads **381 µA**. The 377 µA was within capture noise of that. Both numbers refer to the same steady state; neither measurement was state-aware at the time.
 
 ### Final measured numbers on this firmware
 
@@ -407,8 +407,8 @@ PCA10040 with PPK2 in Ampere mode at P22. The post-fix average depends on the de
 | Configuration | Average | vs default | Notes |
 |---|---|---|---|
 | `prj.conf` default | 1.45 mA | baseline | UART driver + log backend on, no PM |
-| `+ CONFIG_PM=y + CONFIG_PM_DEVICE=y` | 1.44 mA | −0.7 % | Negligible — PM was correct but UART blocked deep sleep |
-| `+ CONFIG_SERIAL=n` (`power_profile.conf` overlay) | **290–570 µA** | **−61 % to −80 %** | Depends on BLE state — see the state-dependent table below |
+| `+ CONFIG_PM=y + CONFIG_PM_DEVICE=y` | 1.44 mA | −0.7 % | Negligible: PM was correct but UART blocked deep sleep |
+| `+ CONFIG_SERIAL=n` (`power_profile.conf` overlay) | **290–570 µA** | **−61 % to −80 %** | Depends on BLE state; see the state-dependent table below |
 
 The post-fix range covers all four steady states. Per-state numbers (measured):
 
@@ -427,14 +427,14 @@ Battery-life implications on a 240 mAh CR2477 cell:
 
 ### State-dependent power regimes (measured)
 
-The "average current" of this firmware isn't a single number — it depends on which BLE state-machine state the device is in. The pairing-window protocol in `ble_svc.c` (described in `CLAUDE.md`) defines four distinct steady states. **Measured** on this build with `power_profile.conf` overlay, PCA10040 + PPK2 in Ampere mode at P22:
+The "average current" of this firmware isn't a single number: it depends on which BLE state-machine state the device is in. The pairing-window protocol in `ble_svc.c` (described in `CLAUDE.md`) defines four distinct steady states. **Measured** on this build with `power_profile.conf` overlay, PCA10040 + PPK2 in Ampere mode at P22:
 
 | State | **Measured avg** | Adv interval | Capture | When the device is here |
 |---|---|---|---|---|
 | **State 1 — Connected + notifying** | **362 µA** | n/a (connected) | <a href="./assets/state-1-connected-362uA.png"><img alt="state-1" src="./assets/state-1-connected-362uA.png" width="200"></a> | A peer subscribed, status frames every 500 ms |
 | **State 2 — Advertising OPEN** (`FAST_1`) | **570 µA** | 30–60 ms | <a href="./assets/state-2-open-adv-570uA.png"><img alt="state-2" src="./assets/state-2-open-adv-570uA.png" width="200"></a> | First 120 s after boot, no peer connected |
-| **State 3 — Advertising BONDED_ONLY** (`FAST_2`) | **381 µA** | 100–150 ms | <a href="./assets/state-3-bonded-adv-381uA.png"><img alt="state-3" src="./assets/state-3-bonded-adv-381uA.png" width="200"></a> | After successful pairing OR after 120 s window expired with a bond in the FAL |
-| **State 4 — Quiet** (BONDED_ONLY, FAL empty) | **290 µA** | not advertising | <a href="./assets/state-4-quiet-290uA.png"><img alt="state-4" src="./assets/state-4-quiet-290uA.png" width="200"></a> | After 120 s with no pairing AND no existing bond — soft-bricked, hold BUTTON3 to recover |
+| **State 3 — Advertising BONDED_ONLY** (`FAST_2`) | **381 µA** | 100–150 ms | <a href="./assets/state-3-bonded-adv-381uA.png"><img alt="state-3" src="./assets/state-3-bonded-adv-381uA.png" width="200"></a> | After successful pairing, or after the 120 s window expired with a bond in the FAL |
+| **State 4 — Quiet** (BONDED_ONLY, FAL empty) | **290 µA** | not advertising | <a href="./assets/state-4-quiet-290uA.png"><img alt="state-4" src="./assets/state-4-quiet-290uA.png" width="200"></a> | After 120 s with no pairing and no existing bond: soft-bricked, hold BUTTON3 to recover |
 
 #### Counter-intuitive finding: connected is cheaper than open advertising
 
@@ -450,13 +450,13 @@ State 2 (OPEN adv FAST_1)   570 µA  ← most expensive
 The intuition that "a live BLE connection costs more than just advertising" turns out to be **wrong** for this firmware. Reason:
 
 - **OPEN advertising (FAST_1)** transmits on all 3 BLE advertising channels every 30–60 ms = ~75 radio TX events per second. The chip is constantly waking the radio, hitting the LNA + PA, switching channels.
-- **Connected + notifying** has connection events at the negotiated interval (typically 30–100 ms). Most of those events are empty packets — just a 2-byte poll/ACK exchange to keep the link alive. Our status notify only injects a real payload once every 500 ms. The connection event itself is much shorter than a 3-channel adv burst.
+- **Connected + notifying** has connection events at the negotiated interval (typically 30–100 ms). Most of those events are empty packets: just a 2-byte poll/ACK exchange to keep the link alive. Our status notify only injects a real payload once every 500 ms. The connection event itself is much shorter than a 3-channel adv burst.
 
 Net: connection events average less radio-on-time per second than FAST_1 advertising. ESP-IDF firmware on similar hardware shows the same pattern.
 
 #### Radio cost decomposition
 
-Subtracting the 290 µA "Quiet" floor (pure background — HFXO calibration, idle PWM peripheral, I2C idle, kernel tick interrupts, BLE controller bookkeeping) from each state gives the radio's marginal contribution:
+Subtracting the 290 µA "Quiet" floor (pure background: HFXO calibration, idle PWM peripheral, I2C idle, kernel tick interrupts, BLE controller bookkeeping) from each state gives the radio's marginal contribution:
 
 | State | Total | minus background | Radio cost |
 |---|---|---|---|
@@ -465,35 +465,35 @@ Subtracting the 290 µA "Quiet" floor (pure background — HFXO calibration, idl
 | State 3 | 381 µA | 290 µA | **91 µA** (FAST_2 adv ~8 events/s × 3 channels) |
 | State 2 | 570 µA | 290 µA | **280 µA** (FAST_1 adv ~25 events/s × 3 channels) |
 
-The FAST_1 vs FAST_2 ratio is ~3× (matches the interval ratio). State 2's 280 µA is the radio working hardest the firmware ever has it work.
+The FAST_1 vs FAST_2 ratio is ~3× (matches the interval ratio). State 2's 280 µA is the hardest the firmware ever works the radio.
 
-The 290 µA "Quiet" floor is the **asymptote for further optimization** without changing the firmware's core behavior — it's what the SoC + non-radio peripherals fundamentally cost.
+The 290 µA "Quiet" floor is the **asymptote for further optimization** without changing the firmware's core behavior: it's what the SoC and non-radio peripherals cost on their own.
 
 ### Watching state transitions live
 
 Two transitions are documented from real captures:
 
-**State 2 → State 4 transition** — fresh `west flash --erase`, no bond on either side, leave alone 3 minutes. At the 120-s mark the OPEN pairing window expires; with an empty FAL the firmware stops advertising entirely. Average steps down from ~570 µA → ~290 µA. The post-transition right half of the chart is essentially flat — no radio events at all.
+**State 2 → State 4 transition** — fresh `west flash --erase`, no bond on either side, leave alone 3 minutes. At the 120-s mark the OPEN pairing window expires; with an empty FAL the firmware stops advertising entirely. Average steps down from ~570 µA → ~290 µA. The post-transition right half of the chart is essentially flat: no radio events at all.
 
 <a href="./assets/state-transition-2-to-4.png"><img alt="state-transition-2-to-4" src="./assets/state-transition-2-to-4.png" width="600"></a>
 
-**State 1 → State 3 transition** — peer pairs/connects via nRF Connect Mobile, then disconnects. The 120-s window doesn't matter for this transition — the moment of peer disconnect triggers the re-arm in BONDED_ONLY mode (FAST_2) since the bond is in the FAL. Average steps from ~362 µA → ~381 µA.
+**State 1 → State 3 transition** — peer pairs/connects via nRF Connect Mobile, then disconnects. The 120-s window doesn't matter for this transition: the moment of peer disconnect triggers the re-arm in BONDED_ONLY mode (FAST_2) since the bond is in the FAL. Average steps from ~362 µA → ~381 µA.
 
 <a href="./assets/state-transition-1-to-3.png"><img alt="state-transition-1-to-3" src="./assets/state-transition-1-to-3.png" width="600"></a>
 
 #### Comparing FAST_1 vs FAST_2 visually
 
-A single screenshot can show the radio-rate difference directly — left half is FAST_1 (~25 events/s), right half is FAST_2 (~8 events/s):
+A single screenshot shows the radio-rate difference directly. The left half is FAST_1 (~25 events/s), the right half FAST_2 (~8 events/s):
 
 <a href="./assets/zoom-fast1-vs-fast2.png"><img alt="zoom-fast1-vs-fast2" src="./assets/zoom-fast1-vs-fast2.png" width="600"></a>
 
 #### Single-event zooms
 
-A single BLE adv event (~10 mA peak, ~0.5 ms wide) — useful for computing the charge cost of one transmission:
+A single BLE adv event (~10 mA peak, ~0.5 ms wide), useful for computing the charge cost of one transmission:
 
 <a href="./assets/zoom-single-adv-event.png"><img alt="zoom-single-adv-event" src="./assets/zoom-single-adv-event.png" width="600"></a>
 
-A status notify event during a connection — wider envelope, includes both the conn-event ACK and the notification TX:
+A status notify event during a connection, with a wider envelope that includes both the conn-event ACK and the notification TX:
 
 <a href="./assets/zoom-status-notify.png"><img alt="zoom-status-notify" src="./assets/zoom-status-notify.png" width="600"></a>
 
@@ -509,9 +509,9 @@ For a battery-powered version of this firmware, the duty cycle between states de
 | Always-on advertising for fresh-device discovery | 100 % State 2 | **570 µA** | ~18 days |
 | Worst case — fresh device, no bonds, 120 s elapsed | 100 % State 4 (advertising off!) | **290 µA** | ~34 days* |
 
-\* State 4 has the *lowest* current but is functionally unusable — no one can connect. Hold BUTTON3 to recover.
+\* State 4 has the *lowest* current but is functionally unusable: no one can connect. Hold BUTTON3 to recover.
 
-**Surprising result:** "always connected" (State 1) actually gives the **longest usable battery life** of any reachable steady state — beating BONDED_ONLY advertising slightly. So a battery-powered variant of this product would benefit from keeping the app open continuously rather than disconnecting between checks. That's the opposite of what most BLE power-saving guidance assumes.
+**Surprising result:** "always connected" (State 1) actually gives the **longest usable battery life** of any reachable steady state, slightly beating BONDED_ONLY advertising. So a battery-powered variant of this product would benefit from keeping the app open continuously rather than disconnecting between checks. That's the opposite of what most BLE power-saving guidance assumes.
 
 The biggest opportunity is **avoiding State 2** if power matters. Right now the firmware sits in OPEN advertising for 120 s after every boot. For battery-powered use, dropping the pairing window to 30 s (or making it user-initiated via BUTTON3) would save significant power for a device that mostly already has a bond.
 
@@ -522,7 +522,7 @@ Reference photos of the PPK2 + DK + (optional) oscilloscope setup used for these
 <a href="./assets/nrf_board_ppk2.jpg"><img alt="ppk2 wired to DK" src="./assets/nrf_board_ppk2.jpg" width="600"></a>
 <a href="./assets/nrf_board_ppk2_oscope.jpg"><img alt="ppk2 + scope" src="./assets/nrf_board_ppk2_oscope.jpg" width="600"></a>
 
-A short clip showing the **closed-loop sensor → control → fan path** end-to-end (45 MB, stored in Git LFS — click play to stream): pinching the SHT3x sensor between two fingers warms it via body heat. The sensor thread picks up the rising reading, `control.c` in sensor mode interpolates a new target PWM duty along the `thr1`/`thr2` ramp, and the oscilloscope shows the PWM waveform widening its duty cycle in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the periodic BLE radio events riding on top of the slowly-changing background current, with the radio cost (~125 µA in FAST_1, ~91 µA in FAST_2) easily distinguishable from the PWM contribution at this zoom level.
+A short clip showing the **closed-loop sensor → control → fan path** end-to-end (45 MB, stored in Git LFS; click play to stream): pinching the SHT3x sensor between two fingers warms it via body heat. The sensor thread picks up the rising reading, `control.c` in sensor mode interpolates a new target PWM duty along the `thr1`/`thr2` ramp, and the oscilloscope shows the PWM waveform widening its duty cycle in real time. Release the sensor and the temperature falls back, and the PWM duty drops with it. The PPK2 trace alongside shows the periodic BLE radio events riding on top of the slowly-changing background current, with the radio cost (~125 µA in FAST_1, ~91 µA in FAST_2) easily distinguishable from the PWM contribution at this zoom level.
 
 <!-- See README.md for why the src is a github.com user-attachment
      URL rather than the in-repo file. Short version: github.com CSP
@@ -542,7 +542,7 @@ power-state-3-bonded-adv-381uA.csv
 power-state-4-quiet-290uA.csv
 ```
 
-Save all four whenever the firmware changes — that's the quantitative model of every steady state, which lets future "what does this Kconfig change do?" questions have a precise answer instead of one summary number.
+Save all four whenever the firmware changes. That gives a quantitative model of every steady state, so a future "what does this Kconfig change do?" question gets a precise answer instead of one summary number.
 
 ### Where the 290 µA "Quiet" floor goes
 
@@ -556,8 +556,8 @@ Decomposition (estimated, since these are all simultaneous):
 
 Further optimizations available if needed for a battery-powered variant:
 
-1. **Reduce pairing-window time.** Currently 120 s in `ble_svc.c`. Drop to 30 s — saves ~280 µA × 90 s per boot, plus reduces the "average if user power-cycles often" weight.
-2. **Slower advertising in BONDED_ONLY.** Currently `BT_LE_ADV_CONN_FAST_2` (100–150 ms). Switching to `BT_LE_ADV_CONN_SLOW` (1000–1500 ms) drops state-3 radio cost ~10× — saves ~80 µA. Cost: phone takes longer to find device.
+1. **Reduce pairing-window time.** Currently 120 s in `ble_svc.c`. Drop to 30 s: saves ~280 µA × 90 s per boot, and it reduces the "average if user power-cycles often" weight.
+2. **Slower advertising in BONDED_ONLY.** Currently `BT_LE_ADV_CONN_FAST_2` (100–150 ms). Switching to `BT_LE_ADV_CONN_SLOW` (1000–1500 ms) drops state-3 radio cost ~10×, saving ~80 µA. Cost: phone takes longer to find device.
 3. **Disable PWM when fan is off.** Even at 0 % duty the peripheral is running. Gating it saves ~50 µA.
 4. **Slower sensor sample rate.** 500 ms → 5 s saves a few µA.
 5. **Slower status notify period.** 500 ms → 5 s saves a few µA per connected event.
@@ -582,13 +582,13 @@ west build -b nrf52dk/nrf52832 -p always . -- -DEXTRA_CONF_FILE=power_profile.co
 west flash
 ```
 
-The `-DEXTRA_CONF_FILE` argument layers the file on top of `prj.conf` — same as Zephyr's standard overlay mechanism for additional config fragments. Reverting to a normal build is just a matter of dropping the `-- -D…` argument.
+The `-DEXTRA_CONF_FILE` argument layers the file on top of `prj.conf`, the same as Zephyr's standard overlay mechanism for additional config fragments. Reverting to a normal build is just a matter of dropping the `-- -D…` argument.
 
 ### Diagnostic flow if you see "high idle current" in the future
 
-1. **Capture the chart**, note the average and the baseline-vs-event ratio. Then identify which BLE state the device is in (see "State-dependent power regimes" — the same firmware ranges from 290 µA to 570 µA depending on state, before you change anything).
+1. **Capture the chart**, note the average and the baseline-vs-event ratio. Then identify which BLE state the device is in (see "State-dependent power regimes": the same firmware ranges from 290 µA to 570 µA depending on state, before you change anything).
 2. **If the average is well above the expected state's measured value** (e.g. > 600 µA in State 3) → something is keeping the SoC out of deep sleep. Check:
-   - UART (`CONFIG_SERIAL=n` — biggest hammer)
+   - UART (`CONFIG_SERIAL=n`, the biggest hammer)
    - PWM running with 0 % duty (gate the driver)
    - I2C / SPI / other peripherals held active
 3. **If average matches the expected state but events are still dense** → it's the radio. Check adv/connection interval.
