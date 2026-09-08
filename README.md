@@ -1,6 +1,6 @@
 # CoolingDock on Zephyr / nRF52
 
-Zephyr / nRF Connect SDK firmware for the **Nordic nRF52832 DK** that re-implements the local-control feature set of the original ESP32-C3 **CoolingDock** product ([demo & reference](https://github.com/sushenghua/CoolingDockDemo)) — wire-compatible with the existing Capacitor / React frontend (same UUIDs, JSON shapes, MTU), so the app runs against this firmware unmodified.
+Zephyr / nRF Connect SDK firmware for the **Nordic nRF52832 DK** that re-implements the local-control feature set of the original ESP32-C3 **CoolingDock** product ([demo & reference](https://github.com/sushenghua/CoolingDockDemo)). It is wire-compatible with the existing Capacitor / React frontend (same UUIDs, JSON shapes, MTU), so the app runs against this firmware unmodified.
 
 Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port. Only BLE control + local sensor sampling + fan PWM are implemented.
 
@@ -8,10 +8,10 @@ Network features (WiFi, HTTP, MQTT, OTA) are out of scope for this port. Only BL
 
 ## What this repo demonstrates
 
-- **Zephyr / nRF Connect SDK port of an ESP32 product** — kernel API, devicetree, Kconfig, west, with explicit init ordering across `bt_enable`, the settings subsystem, and the I2C driver.
-- **BLE peripheral** — LE Secure Connections, encrypted GATT characteristics, persistent bonds via Zephyr settings / NVS, and a pairing-window state machine (120 s open ↔ bonded-only via Filter Accept List, with a button-held-5 s recovery from soft-brick).
-- **Multi-tier test pyramid** — host-based unit tests, integration tests with kernel / NVS / `nrfx` fakes, and a Python hardware-in-loop smoke test.
-- **Power profiling with the Nordic PPK2** — diagnostic walkthrough in [`doc/ppk2_profile.md`](doc/ppk2_profile.md). Baseline idle current dropped from 1.45 mA to 290–570 µA depending on BLE state (≈ −74 % at the typical post-pairing State 3 reading of 381 µA), after identifying the UART driver as the dominant idle-current source.
+- **Zephyr / nRF Connect SDK port of an ESP32 product**: kernel API, devicetree, Kconfig, west, with explicit init ordering across `bt_enable`, the settings subsystem, and the I2C driver.
+- **BLE peripheral**: LE Secure Connections, encrypted GATT characteristics, persistent bonds via Zephyr settings / NVS, and a pairing-window state machine (120 s open ↔ bonded-only via Filter Accept List, with a button-held-5 s recovery from soft-brick).
+- **Multi-tier test pyramid**: host-based unit tests, integration tests with kernel / NVS / `nrfx` fakes, and a Python hardware-in-loop smoke test.
+- **Power profiling with the Nordic PPK2**: diagnostic walkthrough in [`doc/ppk2_profile.md`](doc/ppk2_profile.md). Baseline idle current dropped from 1.45 mA to 290–570 µA depending on BLE state (≈ −74 % at the typical post-pairing State 3 reading of 381 µA), after identifying the UART driver as the dominant idle-current source.
 
 ## Quick start
 
@@ -23,7 +23,7 @@ west flash
 nrfutil device monitor                           # 115200 8N1, J-Link VCOM
 ```
 
-Power-profile build (silent serial, lower baseline — see [`doc/ppk2_profile.md`](doc/ppk2_profile.md) for the rationale):
+Power-profile build (silent serial, lower baseline; [`doc/ppk2_profile.md`](doc/ppk2_profile.md) explains why):
 
 ```sh
 west build -b nrf52dk/nrf52832 -p always . -- -DEXTRA_CONF_FILE=power_profile.conf
@@ -81,7 +81,7 @@ See [`tests/README.md`](tests/README.md) for the rationale behind each tier and 
 - Nordic **nRF52 DK** (PCA10040, nRF52832 — Cortex-M4 @ 64 MHz, BLE 5)
 - **SHT3x** temperature / humidity sensor on P0.26 (SDA) / P0.27 (SCL) (I2C0)
 - PWM fan on P0.13 + separate GPIO power gate on P0.14
-- (Optional) **Nordic PPK2** — Power Profiler Kit II — for current measurements, wired in Ampere mode at the DK's P22 header (SB9 cut)
+- Optional: **Nordic PPK2** power profiler for current measurements, wired in Ampere mode at the DK's P22 header (SB9 cut)
 
 ### Setup gallery
 
@@ -93,7 +93,7 @@ Adding an oscilloscope tap so PWM transitions and BLE radio bursts can be correl
 
 <a href="doc/assets/nrf_board_ppk2_oscope.jpg"><img alt="nRF52 DK + PPK2 + scope" src="doc/assets/nrf_board_ppk2_oscope.jpg" width="600"></a>
 
-Short clip showing the **closed-loop sensor → control → fan path live**: pinching the SHT3x sensor between two fingers warms it (body heat). The sensor thread picks up the higher reading, the control loop (sensor mode, hysteresis with linear ramp from `thr1` to `thr2`) bumps up the target PWM duty, and the oscilloscope shows the PWM waveform's duty cycle widening in real time. Release the sensor and the temperature falls back, PWM duty drops with it. The PPK2 trace alongside shows the BLE radio events superimposed on the slowly-changing background current.
+Short clip showing the **closed-loop sensor → control → fan path live**: pinching the SHT3x sensor between two fingers warms it (body heat). The sensor thread picks up the higher reading, the control loop (sensor mode, hysteresis with linear ramp from `thr1` to `thr2`) bumps up the target PWM duty, and the oscilloscope shows the PWM waveform's duty cycle widening in real time. Release the sensor and the temperature falls back, and the PWM duty drops with it. The PPK2 trace alongside shows the BLE radio events superimposed on the slowly-changing background current.
 
 <!-- IMPORTANT: bare attachment URL on its own line, NOT wrapped in a
      <video> tag or markdown link. GitHub's README markdown sanitizer
@@ -107,7 +107,7 @@ Short clip showing the **closed-loop sensor → control → fan path live**: pin
 
 https://github.com/user-attachments/assets/cb884f7a-21bd-4922-9ae0-8e61d6cf00b9
 
-(Click play in the inline player above. If you're reading this outside github.com — local viewer, raw markdown, etc. — the player won't render; [download the in-repo copy](doc/assets/nrf_board_ppk2_oscope.mp4) instead.)
+(Click play in the inline player above. Outside github.com (a local viewer, raw markdown) the player won't render; [download the in-repo copy](doc/assets/nrf_board_ppk2_oscope.mp4) instead.)
 
 ## License
 

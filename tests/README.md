@@ -1,6 +1,6 @@
 # Tests
 
-Six-tier test setup mirroring industrial embedded practice.
+A six-tier test setup.
 
 ```
 tests/
@@ -21,14 +21,14 @@ scripts/
   run_coverage.sh                      lcov + genhtml after run_tests.sh
 ```
 
-> **Why we don't use Zephyr's `twister` for tiers 1-2.** NCS v3.3.0 hard-blocks `native_sim` on macOS at the arch level (`zephyr/arch/posix/CMakeLists.txt:3` raises `FATAL_ERROR` on Darwin) AND its `unit_testing` board can't compile any `ZTEST(...)` macro because Zephyr's iterable-sections feature uses ELF section attributes that Mach-O rejects. Both walls are inherent to NCS v3.3.
+> **Why we don't use Zephyr's `twister` for tiers 1-2.** NCS v3.3.0 hard-blocks `native_sim` on macOS at the arch level (`zephyr/arch/posix/CMakeLists.txt:3` raises `FATAL_ERROR` on Darwin), and its `unit_testing` board can't compile any `ZTEST(...)` macro because Zephyr's iterable-sections feature uses ELF section attributes that Mach-O rejects. Both blocks are in NCS v3.3 itself.
 >
 > The workaround:
 >
-> - **Unit tests** use a tiny custom harness (`tests/unit/test_harness.{h,c}`) — header-only `TEST(name)` + `ASSERT_*` macros, auto-registered via `__attribute__((constructor))`. Compiled with `cc` directly, no Zephyr.
+> - **Unit tests** use a tiny custom harness (`tests/unit/test_harness.{h,c}`): header-only `TEST(name)` + `ASSERT_*` macros, auto-registered via `__attribute__((constructor))`. Compiled with `cc` directly, no Zephyr.
 > - **Integration test** compiles the *real* `sys_data` + `cmd_interpreter` + `json_io` production code against thin Zephyr-API shims in `tests/integration/persistence/fakes/` (in-memory settings backend, pthread mutexes, no-op work queue, fixed FICR). The production source files are untouched; only the slice of Zephyr API they consume is faked.
 >
-> Same testing power as ztest+twister, no Zephyr scaffolding, runs anywhere `cc` does.
+> This covers the same ground as ztest and twister without the Zephyr scaffolding, and it runs anywhere `cc` does.
 
 ## Tier 1 + 2 — unit + integration (host)
 
@@ -61,7 +61,7 @@ Walks the wire-contract checklist: scan by name prefix → connect (OS triggers 
 
 Pass `python smoke.py SomeOtherPrefix` to scan for a different name prefix.
 
-If the device is in BONDED_ONLY mode (post-120 s window) and the host hasn't paired before, the connection will time out — hold BUTTON3 on the DK for 5 s to reopen the pairing window.
+If the device is in BONDED_ONLY mode (post-120 s window) and the host hasn't paired before, the connection will time out. Hold BUTTON3 on the DK for 5 s to reopen the pairing window.
 
 ## Tier 4 — static analysis
 
@@ -70,7 +70,7 @@ west build -b nrf52dk/nrf52832 -p always .   # generates build/nrf52dk/compile_c
 ./scripts/run_static_analysis.sh
 ```
 
-Runs `clang-tidy` against just `src/*.c` (not Zephyr internals) with `bugprone-*`, `performance-*`, `portability-*`, and `readability-*` checks enabled. The build itself doesn't need hardware — only `west flash` does.
+Runs `clang-tidy` against just `src/*.c` (not Zephyr internals) with `bugprone-*`, `performance-*`, `portability-*`, and `readability-*` checks enabled. The build itself doesn't need hardware; only `west flash` does.
 
 ## Tier 5 — sanitizers
 
@@ -80,7 +80,7 @@ ASan + UBSan are baked into the compile + link flags inside `scripts/run_tests.s
 -fsanitize=address,undefined -fno-sanitize-recover=all
 ```
 
-Failures abort the test process with a backtrace pointing at the offending source line. No separate command needed — every `./scripts/run_tests.sh` run is a sanitizer run.
+Failures abort the test process with a backtrace pointing at the offending source line. No separate command is needed: every `./scripts/run_tests.sh` run is a sanitizer run.
 
 ## Tier 6 — coverage
 
@@ -91,7 +91,7 @@ brew install lcov            # if not installed
 open coverage/html/index.html
 ```
 
-Filtered to `src/*` only — we don't care about Zephyr or harness coverage in our reports.
+Filtered to `src/*` only, since Zephyr and harness coverage aren't interesting here.
 
 ## What's NOT tested here
 
